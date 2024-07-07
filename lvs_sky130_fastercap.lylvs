@@ -392,6 +392,35 @@ MET5.z_name = "MET5"
 
 
 if FASTERCAP &amp;&amp; compare
+
+  def net_name(net)
+    if net.is_a?(String)
+      net
+    else
+      net ? net.expanded_name : "0"
+    end
+  end
+  
+  def q2fastercap(ql, net, z)
+    "Q " + net_name(net) + "  " + ql.each_point_hull.collect do |pt|
+      (pt.x*1.dbu).to_s + " " + (pt.y*1.dbu).to_s + " " + z.to_s
+    end.join("  ")
+  end
+
+  def t2fastercap(tri, net, z)
+    "T " + net_name(net) + "  " + tri.each_point_hull.collect do |pt|
+      (pt.x*1.dbu).to_s + " " + (pt.y*1.dbu).to_s + " " + z.to_s
+    end.join("  ")
+  end
+
+  def e2fastercap(qe, net, z1, z2)
+    "Q " + net_name(net) + "  " + 
+           (qe.p1.x*1.dbu).to_s + " " + (qe.p1.y*1.dbu).to_s + " " + z1.to_s + " " + 
+           (qe.p1.x*1.dbu).to_s + " " + (qe.p1.y*1.dbu).to_s + " " + z2.to_s + " " + 
+           (qe.p2.x*1.dbu).to_s + " " + (qe.p2.y*1.dbu).to_s + " " + z2.to_s + " " + 
+           (qe.p2.x*1.dbu).to_s + " " + (qe.p2.y*1.dbu).to_s + " " + z1.to_s
+  end
+
   file_shapes = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_3Dshapes.txt")
   File.open(file_shapes, "w") do |file|
     for circuit in netlist.each_circuit() do
@@ -402,35 +431,29 @@ if FASTERCAP &amp;&amp; compare
         {2001 =&gt; POLY, 2002 =&gt; LICON, 2003 =&gt; LI, 2004 =&gt; MCON, 2005 =&gt; MET1, 2006 =&gt; VIA1, 2007 =&gt; MET2,
          2008 =&gt; VIA2, 2009 =&gt; MET3, 2010 =&gt; VIA3, 2011 =&gt; MET4 }.each do |n,l|
         #{POLY , LICON, LI, MCON, MET1, VIA1, MET2, VIA2, MET3, VIA3, MET4 }.each do |l|
-          #netShape = DRC::DRCLayer::new(self, l2n_data.shapes_of_net(net, l.data, true)).output(0).decompose_trapezoids
-          netShape = l2n_data.shapes_of_net(net, l.data, true).decompose_trapezoids
+          netShape = l2n_data.shapes_of_net(net, l.data, true).delaunay(0.0, 1.0)
           z_bot = l.z_bot
           z_top = l.z_top
           if (l.z_name &amp;&amp; !netShape.is_empty?)
             file.puts("* layer: " + l.z_name + "\n")
           end # if
           if (n!=2002 &amp;&amp; n!= 2004 &amp;&amp; n!= 2006 &amp;&amp; n!=2008 &amp;&amp; n!=2010) # if layers is not a contact or via
-            for quadrilater in netShape.each() do
-              # describe as quadrilaters, the bottom surface of poly and metals layers
-              line = "Q "+ net.expanded_name()
-              for qpoints in quadrilater.each_point_hull() do
-                line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_bot.to_s
-              end # for qpoints
+            netShape.each do |triangle|
+              # describe as triangles, the bottom surface of poly and metals layers
+              line = t2fastercap(triangle, net, z_bot)
               file.puts(line + "\n")
             end # each quadrilater
-            for quadrilater in netShape.each() do
-              # describe as quadrilaters, the top surface of poly and metals layers
-              line = "Q "+ net.expanded_name()
-              for qpoints in quadrilater.each_point_hull() do
-                line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_top.to_s
-              end # for qpoints
+            netShape.each do |triangle|
+              # describe as triangles, the top surface of poly and metals layers
+              line = t2fastercap(triangle, net, z_top)
               file.puts(line + "\n")
             end # each quadrilater
-          end # if n!=... conatct and vias
+          end # if n!=... contact and vias
           netShape = l2n_data.shapes_of_net(net, l.data, true)
-          for qedge in netShape.edges.each do
-            # describe as quadrilaters, the border surface of poly, contacts, vias and metals layers
-            file.puts("Q " + net.expanded_name() + " " + (qedge.p1.x/1).to_s + " " + (qedge.p1.y/1).to_s + " " + z_top.to_s + " " + (qedge.p1.x/1).to_s + " " + (qedge.p1.y/1).to_s + " " + z_bot.to_s + " " + (qedge.p2.x/1).to_s + " " + (qedge.p2.y/1).to_s + " " + z_top.to_s + " " + (qedge.p2.x/1).to_s + " " + (qedge.p2.y/1).to_s + " " + z_bot.to_s + "\n")
+          netShape.edges.each do |qedge|
+            # describe as triangles, the border surface of poly, contacts, vias and metals layers
+            line = e2fastercap(qedge, net, z_top, z_bot)
+            file.puts(line + "\n")
           end # for qedge
         end # each layer
 
@@ -438,20 +461,14 @@ if FASTERCAP &amp;&amp; compare
         z_top = 0.0
         # outputs the shapes for this net to layers : Nwell and active :
         {2001 =&gt; subGND, 2002 =&gt; NWELL, 2003 =&gt; DIFF, 2004 =&gt; TAP }.each do |n,l|
-          netShape = l2n_data.shapes_of_net(net, l.data, true).decompose_trapezoids
+          netShape = l2n_data.shapes_of_net(net, l.data, true).delaunay(0.0, 1.0)
           if (l.z_name &amp;&amp; !l.is_empty?)
             file.puts("* layer: " + l.z_name + "\n")
           end # if
-          for quadrilater in netShape.each() do
-            # describe as quadrilaters, the top surface of poly and metals layers
-            if (n==2001)
-              line = "Q  0 "  # 0 = ground when outside the NWELL, DIFF, TAP
-            else
-              line = "Q "+ net.expanded_name()
-            end
-            for qpoints in quadrilater.each_point_hull() do
-              line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_top.to_s
-            end # for qpoints
+          netShape.each do |triangle|
+            # describe as triangles, the top surface of poly and metals layers
+            # 2001 = ground when outside the NWELL, DIFF, TAP
+            line = t2fastercap(triangle, n == 2001 ? nil : net, z_top)
             file.puts(line + "\n")
           end # each quadrilater
         end # each layer
@@ -459,8 +476,8 @@ if FASTERCAP &amp;&amp; compare
     
     end # for circuit
   end # do file
-
-
+  
+  
   file_passivation = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_3Dpassivation.txt")
   File.open(file_passivation, "w") do |file|
     file.puts("* Passivation shapes of " + source.cell_name + "\n*\n")
@@ -472,43 +489,28 @@ if FASTERCAP &amp;&amp; compare
 
     TOPpassivation = TOPMetal.sized(passivation_thickness)
     BOTpassivation = SUB - TOPpassivation
-    passivShape = TOPpassivation.merged.output(0).decompose_trapezoids
-#    passivShape = TOPpassivation.merged.rectangles
-    for quadrilater in passivShape.each() do
-      # describe as quadrilaters, the bottom surface of poly and metals layers
-      line = "Q PASS "
-      for qpoints in quadrilater.each_point_hull() do
-        line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_bot.to_s
-      end # for qpoints
+    passivShapes = TOPpassivation.data.delaunay(0.0, 1.0)
+    passivShapes.each do |triangle|
+      # describe as triangles, the bottom surface of poly and metals layers
+      line = t2fastercap(triangle, "PASS", z_bot)
       file.puts(line + "\n")
     end # each quadrilater
-    for quadrilater in passivShape.each() do
-      # describe as quadrilaters, the top surface of poly and metals layers
-      line = "Q PASS "
-      for qpoints in quadrilater.each_point_hull() do
-        line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_top.to_s
-      end # for qpoints
+    passivShapes.each do |triangle|
+      # describe as triangles, the top surface of poly and metals layers
+      line = t2fastercap(triangle, "PASS", z_top)
       file.puts(line + "\n")
-      quadrilater.delete
     end # each quadrilater
 
-    passivShape = BOTpassivation.merged.output(1).decompose_trapezoids
-    for quadrilater in passivShape.each() do
-      # describe as quadrilaters, the bottom surface of poly and metals layers
-      line = "Q PASS "
-      for qpoints in quadrilater.each_point_hull() do
-        line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_bot.to_s
-      end # for qpoints
+    passivShapes = BOTpassivation.data.delaunay(0.0, 1.0)
+    passivShapes.each do |triangle|
+      # describe as triangles, the bottom surface of poly and metals layers
+      line = t2fastercap(triangle, "PASS", z_bot)
       file.puts(line + "\n")
     end # each quadrilater
-    for quadrilater in passivShape.each() do
-      # describe as quadrilaters, the top surface of poly and metals layers
-      line = "Q PASS "
-      for qpoints in quadrilater.each_point_hull() do
-        line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_top.to_s
-      end # for qpoints
+    passivShapes.each do |triangle|
+      # describe as triangles, the top surface of poly and metals layers
+      line = t2fastercap(triangle, "PASS", z_top)
       file.puts(line + "\n")
-      quadrilater.delete
     end # each quadrilater
   end # do file
 
@@ -523,7 +525,7 @@ if FASTERCAP &amp;&amp; compare
   end # do file
 
   # now launch Fastercap !
-  system("FasterCap -b  " + file_FCinput + "  &gt;&gt;  " + File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapOutput.txt"))
+  system("FasterCap -b  " + file_FCinput + " &gt;" + File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapOutput.txt"))
   
   dimension = 0
   j = 0
@@ -543,11 +545,9 @@ if FASTERCAP &amp;&amp; compare
             capname[j] = cap
           else
             capex_mat[i][j] = cap.to_f/1e6
-#            print(capex_mat[i][j].to_s + "=C(" + i.to_s + "," + j.to_s + ") ; ") 
           end
           i = i+1
         end # for
-#        print("\n")
         j = j + 1
       end # if j
 
@@ -560,27 +560,64 @@ if FASTERCAP &amp;&amp; compare
     end # each line
   end # do file
 
+  # embed the capacitances into the netlist
+  top_circuit = netlist.circuit_by_name(source.cell_name)
 
-  # Extract the Spice netlist from the Maxwell Capacitors matrix
-  file_FCoutput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_ext_cap.cir")
-  File.open(file_FCoutput, "w") do |file|
-    #print("*\n* All nodes parasitic capacitors of " + source.cell_name + "\n*\n")
-    file.puts("*\n* All nodes parasitic capacitors of " + source.cell_name + "\n*\n")
-    for j in (1 .. dimension) do
-      capii = 0
-      for i in (1 .. dimension) do
-        #print("C(" + i.to_s + "," + j.to_s + ")=" + capex_mat[i][j].to_s + "   ")
-        if (i&gt;j)
-          #print("Cext" + i.to_s + j.to_s + "  " + capname[i] + " " + capname[j] + "  " + (-capex_mat[i][j]).to_s + "\n")
-          file.puts("Cext" + i.to_s + j.to_s + "  " + capname[i] + " " + capname[j] + "  " + (-capex_mat[i][j]).to_s + "\n")
-        else
-          capii = capii + capex_mat[i][j]
-        end # if i=j
-      end # for i
-      #print("Cext" + j.to_s + j.to_s + "  " + capname[i] + " 0  " + capii.to_s + "\n")
-      file.puts("Cext" + j.to_s + j.to_s + "  " + capname[i] + " 0  " + capii.to_s + "\n")
-    end # for j
-  end # do file
+  # create a capacitor class
+  cap = RBA::DeviceClassCapacitor::new
+  cap.name = "PEX_CAP"
+  cap.description = "Extracted by PEX"
+  netlist.add(cap)
+
+  # build a name to net table  
+  name2net = {}
+  top_circuit.each_net do |n|
+    name2net[n.expanded_name] = n
+  end
+  
+  # find nets for the matrix axes
+  nets = []
+  (1..dimension).each do |i|
+    nn = capname[i].split("_")[1]
+    n = name2net[nn]
+    n || raise("No net found with name #{nn}")
+    nets[i] = n
+  end
+  
+  nets[0] = top_circuit.create_net("0")
+ 
+  # insert the caps
+  (1..dimension).each do |j|
+  
+    capii = 0
+    
+    (1..dimension).each do |i|
+    
+      if i &gt; j
+      
+        n1 = nets[i]
+        n2 = nets[j]
+        c = top_circuit.create_device(cap, "Cext" + i.to_s + j.to_s)
+        c.connect_terminal("A", n1)
+        c.connect_terminal("B", n2)
+        c.set_parameter("C", -capex_mat[i][j])
+        
+      else
+      
+        capii = capii + capex_mat[i][j]
+        
+      end # if i=j
+      
+    end # for i
+    
+    n1 = nets[j]
+    n2 = nets[0]
+    c = top_circuit.create_device(cap, "Cext" + j.to_s + j.to_s)
+    c.connect_terminal("A", n1)
+    c.connect_terminal("B", n2)
+    c.set_parameter("C", capii)
+
+  end # for j
 
 end # if FASTERCAP
 
