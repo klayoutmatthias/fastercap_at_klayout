@@ -1,0 +1,593 @@
+<?xml version="1.0" encoding="utf-8"?>
+<klayout-macro>
+ <description/>
+ <version/>
+ <category>lvs</category>
+ <prolog/>
+ <epilog/>
+ <doc/>
+ <autorun>false</autorun>
+ <autorun-early>false</autorun-early>
+ <priority>0</priority>
+ <shortcut/>
+ <show-in-menu>true</show-in-menu>
+ <group-name>lvs_scripts</group-name>
+ <menu-path>tools_menu.lvs.end</menu-path>
+ <interpreter>dsl</interpreter>
+ <dsl-interpreter-name>lvs-dsl-xml</dsl-interpreter-name>
+ <text>#
+# Extraction for SKY130
+#
+############################
+
+tstart = Time.now
+FASTERCAP = true
+
+# optionnal for a batch launch :   klayout -b -rd input=my_layout.gds -rd report=my_report.lyrdb -rd schematic=reference_netlist.cir -rd target_netlist=extracted_netlist.cir -r sky130.lvs
+if $input
+  source($input)
+end
+
+if $report
+  report($report)
+else
+  report_lvs("lvs_report.lvsdb")
+end
+
+if $schematic
+#reference netlist
+   schematic($schematic)
+else 
+   schematic("sky130hs_lib.cdl")
+end
+
+# true: use net names instead of numbers
+# false: use numbers for nets
+spice_with_net_names = true
+
+# true: put in comments with details
+# false: no comments
+spice_with_comments = false
+
+if $target_netlist
+  target_netlist($target_netlist)
+else
+   # target_netlist("netlist.cir", write_spice(spice_with_net_names, spice_with_comments), "The netlist comment goes here.") 
+   target_netlist(File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_extracted.cir"), write_spice(spice_with_net_names, spice_with_comments),  "Extracted by KLayout on : #{Time.now.strftime("%d/%m/%Y %H:%M")}")
+end
+
+# Hierarchical mode
+deep
+# Use 4 CPU cores
+threads(4)
+# Print details
+verbose(true)
+
+
+# layers definitions
+########################
+BOUND  = polygons(235, 4)
+DNWELL  = polygons(64, 18)
+PWRES  = polygons(64, 13)
+NWELL  = polygons(64, 20)
+NWELLTXT  = input(64, 5)
+NWELLPIN  = polygons(64, 16)
+SUBTXT  = input(122, 5)
+SUBPIN  = input(64, 59)
+DIFF  = polygons(65, 20)
+TAP  = polygons(65, 44)
+PSDM  = polygons(94, 20)
+NSDM  = polygons(93, 44)
+LVTN  = polygons(125, 44)
+HVTR  = polygons(18, 20)
+HVTP  = polygons(78, 44)
+SONOS  = polygons(80, 20)
+COREID  = polygons(81, 2)
+STDCELL  = polygons(81, 4)
+NPNID  = polygons(82, 20)
+PNPID  = polygons(82, 44)
+RPM  = polygons(86, 20)
+URPM  = polygons(79, 20)
+LDNTM  = polygons(11, 44)
+HVNTM  = polygons(125, 20)
+POLY  = polygons(66, 20)
+POLYTXT  = input(66, 5)
+POLYPIN  = polygons(66, 16)
+HVI  = polygons(75, 20)
+LICON  = polygons(66, 44)
+NPC  = polygons(95, 20)
+DIFFRES  = polygons(65, 13)
+POLYRES  = polygons(66, 13)
+POLYSHO  = polygons(66, 15)
+DIODE  = polygons(81, 23)
+LI  = polygons(67, 20)
+LITXT  = input(67, 5)
+LIPIN  = polygons(67, 16)
+LIRES  = polygons(67, 13)
+MCON  = polygons(67, 44)
+MET1  = polygons(68, 20)
+MET1TXT  = input(68, 5)
+MET1PIN  = polygons(68, 16)
+MET1RES  = polygons(68, 13)
+VIA1  = polygons(68, 44)
+MET2  = polygons(69, 20)
+MET2TXT  = input(69, 5)
+MET2PIN  = polygons(69, 16)
+MET2RES  = polygons(69, 13)
+VIA2  = polygons(69, 44)
+MET3  = polygons(70, 20)
+MET3TXT  = input(70, 5)
+MET3PIN  = polygons(70, 16)
+MET3RES  = polygons(70, 13)
+VIA3  = polygons(70, 44)
+MET4  = polygons(71, 20)
+MET4TXT  = input(71, 5)
+MET4PIN  = polygons(71, 16)
+MET4RES  = polygons(71, 13)
+VIA4  = polygons(71, 44)
+MET5  = polygons(72, 20)
+MET5TXT  = input(72, 5)
+MET5PIN  = polygons(72, 16)
+MET5RES  = polygons(72, 13)
+RDL  = polygons(74, 20)
+RDLTXT  = input(74, 5)
+RDLPIN  = polygons(74, 16)
+GLASS  = polygons(76, 20)
+CAPM  = polygons(89, 44)
+CAPM2  = polygons(97, 44)
+LOWTAPD  = polygons(81, 14)
+FILLOBSM1  = polygons(62, 24)
+FILLOBSM2  = polygons(105, 52)
+FILLOBSM3  = polygons(107, 24)
+FILLOBSM4  = polygons(112, 4)
+NCM = polygons(92, 44)
+
+# Bulk layer for terminal provisioning
+SUB = polygons(236, 0)
+# SUB = polygon_layer
+
+# Computed layers
+PDIFF = DIFF &amp; NWELL &amp; PSDM
+NTAP = TAP &amp; NWELL &amp; NSDM
+PGATE = PDIFF &amp; POLY
+PSD = PDIFF - PGATE
+STD_PGATE = PGATE - HVTP - NCM - HVI
+HVT_PGATE = PGATE &amp; HVTP - NCM - HVI
+HV5_PGATE = PGATE - HVTP - NCM &amp; HVI
+  
+NDIFF = DIFF - NWELL &amp; NSDM
+PTAP = TAP - NWELL &amp; PSDM
+NGATE = NDIFF &amp; POLY
+NSD = NDIFF - NGATE
+STD_NGATE = NGATE - NCM - LVTN - HVI
+LVT_NGATE = NGATE - NCM &amp; LVTN - HVI
+HV5_NGATE = NGATE - NCM - LVTN &amp; HVI
+HV5NA_NGATE = NGATE - NCM &amp; LVTN &amp; HVI
+
+# drawing to physical
+device_scaling(1000000)
+
+# PMOS transistor device extraction
+extract_devices(mos4("pfet_01v8"), { "SD" =&gt; PSD, "G" =&gt; STD_PGATE, "tS" =&gt; PSD, "tD" =&gt; PSD, "tG" =&gt; POLY, "W" =&gt; NWELL })
+extract_devices(mos4("pfet_01v8_hvt"), { "SD" =&gt; PSD, "G" =&gt; HVT_PGATE, "tS" =&gt; PSD, "tD" =&gt; PSD, "tG" =&gt; POLY, "W" =&gt; NWELL })
+extract_devices(mos4("pfet_g5v0d10v5"), { "SD" =&gt; PSD, "G" =&gt; HV5_PGATE, "tS" =&gt; PSD, "tD" =&gt; PSD, "tG" =&gt; POLY, "W" =&gt; NWELL })
+
+# NMOS transistor device extraction
+extract_devices(mos4("nfet_01v8"), { "SD" =&gt; NSD, "G" =&gt; STD_NGATE, "tS" =&gt; NSD, "tD" =&gt; NSD, "tG" =&gt; POLY, "W" =&gt; SUB })
+extract_devices(mos4("nfet_01v8_lvt"), { "SD" =&gt; NSD, "G" =&gt; LVT_NGATE, "tS" =&gt; NSD, "tD" =&gt; NSD, "tG" =&gt; POLY, "W" =&gt; SUB })
+extract_devices(mos4("nfet_g5v0d10v5"), { "SD" =&gt; NSD, "G" =&gt; HV5_NGATE, "tS" =&gt; NSD, "tD" =&gt; NSD, "tG" =&gt; POLY, "W" =&gt; SUB })
+extract_devices(mos4("nfet_01v8_nvt"), { "SD" =&gt; NSD, "G" =&gt; HV5NA_NGATE, "tS" =&gt; NSD, "tD" =&gt; NSD, "tG" =&gt; POLY, "W" =&gt; SUB })
+
+
+# Define connectivity for netlist extraction
+
+# Inter-layer
+connect(SUB,  PTAP)
+connect(NWELL,  NTAP)
+connect(LICON,   PTAP)
+connect(LICON,   NTAP)
+connect(PSD,    LICON)
+connect(NSD,    LICON)
+connect(POLY,   LICON)
+connect(LICON,   LI)
+connect(LI, MCON)
+connect(MCON,   MET1)
+connect(MET1,VIA1)
+connect(VIA1,   MET2)
+connect(MET2, VIA2)
+connect(VIA2,   MET3)
+connect(MET3, VIA3)
+connect(VIA3,   MET4)
+connect(MET4, VIA4)
+connect(VIA4,   MET5)
+# Attaching labels
+connect(SUB, SUBTXT)
+connect(SUB, SUBPIN)
+connect(NWELL, NWELLTXT)
+connect(POLY, POLYTXT)
+connect(LI, LITXT)
+connect(MET1, MET1PIN)
+connect(MET2, MET2PIN)
+connect(MET3, MET3PIN)
+connect(MET4, MET4PIN)
+connect(MET5, MET5PIN)
+connect(MET1PIN, MET1TXT)
+connect(MET2PIN, MET2TXT)
+connect(MET3PIN, MET3TXT)
+connect(MET4PIN, MET4TXT)
+connect(MET5PIN, MET5TXT)
+
+# Global
+connect_global(SUB, "VSS")
+connect_implicit("VSS")
+
+# Actually performs the extraction
+netlist # ... not really required
+split_gates("nfet_01v8")
+split_gates("pfet_01v8_hvt")
+
+# Flatten cells which are present in one netlist only
+schematic.flatten_circuit("SKY130_FD_SC_HD__FILL_*")
+schematic.flatten_circuit("SKY130_FD_SC_HD__TAP*")
+schematic.flatten_circuit("SKY130_FD_SC_HD__CONB*")
+align
+# SIMPLIFICATION of the netlist
+#netlist.make_top_level_pins
+#netlist.combine_devices
+#netlist.purge
+#netlist.purge_nets
+netlist.simplify
+schematic.simplify
+
+# Tolerances for the devices extracted parameters
+#  tolerance(device_class_name, parameter_name [, :absolute =&gt; absolute_tolerance] [, :relative =&gt; relative_tolerance])
+tolerance("pfet_01v8", "W", :absolute =&gt; 1.nm, :relative =&gt; 0.001)
+tolerance("pfet_01v8", "L", :absolute =&gt; 1.nm, :relative =&gt; 0.001)
+tolerance("pfet_01v8_hvt", "W", :absolute =&gt; 1.nm, :relative =&gt; 0.001)
+tolerance("pfet_01v8_hvt", "L", :absolute =&gt; 1.nm, :relative =&gt; 0.001)
+tolerance("nfet_01v8", "W", :absolute =&gt; 1.nm, :relative =&gt; 0.001)
+tolerance("nfet_01v8", "L", :absolute =&gt; 1.nm, :relative =&gt; 0.001)
+tolerance("nfet_01v8_lvt", "W", :absolute =&gt; 1.nm, :relative =&gt; 0.001)
+tolerance("nfet_01v8_lvt", "L", :absolute =&gt; 1.nm, :relative =&gt; 0.001)
+
+# NangateOpenCellLibrary Digital gates input equivalence :
+equivalent_pins("*AND2_1", "A", "B")
+equivalent_pins("*AND2_2", "A", "B")
+equivalent_pins("*AND2_4", "A", "B")
+equivalent_pins("*AND3_1", "A", "B", "C")
+equivalent_pins("*AND3_2", "A", "B", "C")
+equivalent_pins("*AND3_4", "A", "B", "C")
+equivalent_pins("*AND4_1", "A", "B", "C", "D")
+equivalent_pins("*AND4_2", "A", "B", "C", "D")
+equivalent_pins("*AND4_4", "A", "B", "C", "D")
+equivalent_pins("*NAND2_1", "A", "B")
+equivalent_pins("*NAND2_2", "A", "B")
+equivalent_pins("*NAND2_4", "A", "B")
+equivalent_pins("*NAND3_1", "A", "B", "C")
+equivalent_pins("*NAND3_2", "A", "B", "C")
+equivalent_pins("*NAND3_4", "A", "B", "C")
+equivalent_pins("*NAND4_X1", "A", "B", "C", "D")
+equivalent_pins("*NAND4_2", "A", "B", "C", "D")
+equivalent_pins("*NAND4_4", "A", "B", "C", "D")
+equivalent_pins("*OR2_1", "A", "B")
+equivalent_pins("*OR2_2", "A", "B")
+equivalent_pins("*OR2_4", "A", "B")
+equivalent_pins("*OR3_1", "A", "B", "C")
+equivalent_pins("*OR3_2", "A", "B", "C")
+equivalent_pins("*OR3_4", "A", "B", "C")
+equivalent_pins("*OR4_1", "A", "B", "C", "D")
+equivalent_pins("*OR4_2", "A", "B", "C", "D")
+equivalent_pins("*OR4_4", "A", "B", "C", "D")
+equivalent_pins("*NOR2_1", "A", "B")
+equivalent_pins("*NOR2_2", "A", "B")
+equivalent_pins("*NOR2_4", "A", "B")
+equivalent_pins("*NOR3_1", "A", "B", "C")
+equivalent_pins("*NOR3_2", "A", "B", "C")
+equivalent_pins("*NOR3_4", "A", "B", "C")
+equivalent_pins("*NOR4_1", "A", "B", "C", "D")
+equivalent_pins("*NOR4_2", "A", "B", "C", "D")
+equivalent_pins("*NOR4_4", "A", "B", "C", "D")
+equivalent_pins("*XOR2_1", "A", "B")
+equivalent_pins("*XOR2_2", "A", "B")
+equivalent_pins("*XNOR2_1", "A", "B")
+equivalent_pins("*XNOR2_2", "A", "B")
+
+#max_res(1000000)
+#min_caps(1e-15)
+
+if ! compare 
+  #raise "ERROR : Netlists don't match"
+  puts "ERROR : Netlists don't match"
+else
+  puts "INFO : Congratulations! Netlists match."
+end
+
+
+##########  PARASITIC CAPACITORS EXTRACTION based on FASTERCAP
+
+# @brief   To extend the DRC::DRCLayer class
+#
+class DRC::DRCLayer
+  attr_accessor :z_bot, :z_height, :z_top, :z_name
+  def default()
+    @z_bot = 0.um
+    @z_height = 1.um
+    @z_top = 1.um
+    @z_name = "LAY_NAME"  # the name is used only for validation
+  end
+end
+
+
+NWELL.default()
+NWELL.z_name = "NWELL"
+DIFF.default()
+DIFF.z_name = "DIFF"
+TAP.default()
+TAP.z_name = "TAP"
+
+POLY.z_height = 250.nm
+POLY.z_bot = 5.nm
+POLY.z_top = POLY.z_height + POLY.z_bot
+POLY.z_name = "POLY"
+
+LICON.z_height = 400.nm
+LICON.z_bot = 0.nm
+LICON.z_top = LICON.z_bot + LICON.z_height
+LICON.z_name = "LICON"
+
+LI.z_height = 200.nm
+LI.z_bot = LICON.z_top
+LI.z_top = LI.z_bot + LI.z_height
+LI.z_name = "LI"
+
+MCON.z_height = 350.nm
+MCON.z_bot = LI.z_top
+MCON.z_top = MCON.z_bot + MCON.z_height
+MCON.z_name = "MCON"
+
+MET1.z_height = 300.nm
+MET1.z_bot = MCON.z_top
+MET1.z_top = MET1.z_bot + MET1.z_height
+MET1.z_name = "MET1"
+
+VIA1.z_height = 350.nm
+VIA1.z_bot = MET1.z_top
+VIA1.z_top = VIA1.z_bot + VIA1.z_height
+VIA1.z_name = "VIA1"
+
+MET2.z_height = 300.nm
+MET2.z_bot = VIA1.z_top
+MET2.z_top = MET2.z_bot + MET2.z_height
+MET2.z_name = "MET2"
+
+VIA2.z_height = 350.nm
+VIA2.z_bot = MET2.z_top
+VIA2.z_top = VIA2.z_bot + VIA2.z_height
+VIA2.z_name = "VIA2"
+
+MET3.z_height = 300.nm
+MET3.z_bot = VIA2.z_top
+MET3.z_top = MET3.z_bot + MET3.z_height
+MET3.z_name = "MET3"
+
+VIA3.z_height = 350.nm
+VIA3.z_bot = MET3.z_top
+VIA3.z_top = VIA3.z_bot + VIA3.z_height
+VIA3.z_name = "VIA3"
+
+MET4.z_height = 500.nm
+MET4.z_bot = VIA3.z_top
+MET4.z_top = MET4.z_bot + MET4.z_height
+MET4.z_name = "MET4"
+
+VIA4.z_height = 400.nm
+VIA4.z_bot = MET4.z_top
+VIA4.z_top = VIA4.z_bot + VIA4.z_height
+VIA4.z_name = "VIA4"
+
+MET5.z_height = 500.nm
+MET5.z_bot = VIA4.z_top
+MET5.z_top = MET5.z_bot + MET5.z_height
+MET5.z_name = "MET5"
+
+
+if FASTERCAP &amp;&amp; compare
+  file_shapes = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_3Dshapes.txt")
+  File.open(file_shapes, "w") do |file|
+    for circuit in netlist.each_circuit() do
+      file.puts("*\n* circuit.name : " + circuit.name + "\n* ------------\n")
+      for net in circuit.each_net() do
+        file.puts("*\n* net: " + net.expanded_name() + "\n")
+        # outputs the shapes for this net to layers : poly, contacts, metals, vias :
+        {2001 =&gt; POLY, 2002 =&gt; LICON, 2003 =&gt; LI, 2004 =&gt; MCON, 2005 =&gt; MET1, 2006 =&gt; VIA1, 2007 =&gt; MET2,
+         2008 =&gt; VIA2, 2009 =&gt; MET3, 2010 =&gt; VIA3, 2011 =&gt; MET4 }.each do |n,l|
+        #{POLY , LICON, LI, MCON, MET1, VIA1, MET2, VIA2, MET3, VIA3, MET4 }.each do |l|
+          #netShape = DRC::DRCLayer::new(self, l2n_data.shapes_of_net(net, l.data, true)).output(0).decompose_trapezoids
+          netShape = l2n_data.shapes_of_net(net, l.data, true).decompose_trapezoids
+          z_bot = l.z_bot
+          z_top = l.z_top
+          if (l.z_name &amp;&amp; !netShape.is_empty?)
+            file.puts("* layer: " + l.z_name + "\n")
+          end # if
+          if (n!=2002 &amp;&amp; n!= 2004 &amp;&amp; n!= 2006 &amp;&amp; n!=2008 &amp;&amp; n!=2010) # if layers is not a contact or via
+            for quadrilater in netShape.each() do
+              # describe as quadrilaters, the bottom surface of poly and metals layers
+              line = "Q "+ net.expanded_name()
+              for qpoints in quadrilater.each_point_hull() do
+                line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_bot.to_s
+              end # for qpoints
+              file.puts(line + "\n")
+            end # each quadrilater
+            for quadrilater in netShape.each() do
+              # describe as quadrilaters, the top surface of poly and metals layers
+              line = "Q "+ net.expanded_name()
+              for qpoints in quadrilater.each_point_hull() do
+                line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_top.to_s
+              end # for qpoints
+              file.puts(line + "\n")
+            end # each quadrilater
+          end # if n!=... conatct and vias
+          netShape = l2n_data.shapes_of_net(net, l.data, true)
+          for qedge in netShape.edges.each do
+            # describe as quadrilaters, the border surface of poly, contacts, vias and metals layers
+            file.puts("Q " + net.expanded_name() + " " + (qedge.p1.x/1).to_s + " " + (qedge.p1.y/1).to_s + " " + z_top.to_s + " " + (qedge.p1.x/1).to_s + " " + (qedge.p1.y/1).to_s + " " + z_bot.to_s + " " + (qedge.p2.x/1).to_s + " " + (qedge.p2.y/1).to_s + " " + z_top.to_s + " " + (qedge.p2.x/1).to_s + " " + (qedge.p2.y/1).to_s + " " + z_bot.to_s + "\n")
+          end # for qedge
+        end # each layer
+
+        subGND = SUB - NWELL - DIFF - TAP
+        z_top = 0.0
+        # outputs the shapes for this net to layers : Nwell and active :
+        {2001 =&gt; subGND, 2002 =&gt; NWELL, 2003 =&gt; DIFF, 2004 =&gt; TAP }.each do |n,l|
+          netShape = l2n_data.shapes_of_net(net, l.data, true).decompose_trapezoids
+          if (l.z_name &amp;&amp; !l.is_empty?)
+            file.puts("* layer: " + l.z_name + "\n")
+          end # if
+          for quadrilater in netShape.each() do
+            # describe as quadrilaters, the top surface of poly and metals layers
+            if (n==2001)
+              line = "Q  0 "  # 0 = ground when outside the NWELL, DIFF, TAP
+            else
+              line = "Q "+ net.expanded_name()
+            end
+            for qpoints in quadrilater.each_point_hull() do
+              line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_top.to_s
+            end # for qpoints
+            file.puts(line + "\n")
+          end # each quadrilater
+        end # each layer
+      end # for net
+    
+    end # for circuit
+  end # do file
+
+
+  file_passivation = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_3Dpassivation.txt")
+  File.open(file_passivation, "w") do |file|
+    file.puts("* Passivation shapes of " + source.cell_name + "\n*\n")
+    passivation_thickness = 300.nm
+    z_bot = MET4.z_bot + passivation_thickness
+    z_top = MET4.z_top + passivation_thickness
+
+    TOPMetal = MET1   # to be chnged according to the process : used to defined the passivation shapes if not planarized
+
+    TOPpassivation = TOPMetal.sized(passivation_thickness)
+    BOTpassivation = SUB - TOPpassivation
+    passivShape = TOPpassivation.merged.output(0).decompose_trapezoids
+#    passivShape = TOPpassivation.merged.rectangles
+    for quadrilater in passivShape.each() do
+      # describe as quadrilaters, the bottom surface of poly and metals layers
+      line = "Q PASS "
+      for qpoints in quadrilater.each_point_hull() do
+        line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_bot.to_s
+      end # for qpoints
+      file.puts(line + "\n")
+    end # each quadrilater
+    for quadrilater in passivShape.each() do
+      # describe as quadrilaters, the top surface of poly and metals layers
+      line = "Q PASS "
+      for qpoints in quadrilater.each_point_hull() do
+        line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_top.to_s
+      end # for qpoints
+      file.puts(line + "\n")
+      quadrilater.delete
+    end # each quadrilater
+
+    passivShape = BOTpassivation.merged.output(1).decompose_trapezoids
+    for quadrilater in passivShape.each() do
+      # describe as quadrilaters, the bottom surface of poly and metals layers
+      line = "Q PASS "
+      for qpoints in quadrilater.each_point_hull() do
+        line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_bot.to_s
+      end # for qpoints
+      file.puts(line + "\n")
+    end # each quadrilater
+    for quadrilater in passivShape.each() do
+      # describe as quadrilaters, the top surface of poly and metals layers
+      line = "Q PASS "
+      for qpoints in quadrilater.each_point_hull() do
+        line = line + "  " + (qpoints.x/1).to_s + " " + (qpoints.y/1).to_s + " " +  z_top.to_s
+      end # for qpoints
+      file.puts(line + "\n")
+      quadrilater.delete
+    end # each quadrilater
+  end # do file
+
+  file_FCinput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapInput.lst")
+  File.open(file_FCinput, "w") do |file|
+    file.puts("0 Title : Faster shapes of  " + source.cell_name + "\n*\n")
+    file.puts("* conductive shapes of the cell :\n")
+    file.puts("C " + source.cell_name + "_3Dshapes.txt  4.2 0.0 0.0 0.0\n")
+    file.puts("**  4.2 = dielectric constant of SiO2 = outer dielectric of the Metals\n*\n")
+    file.puts("* passivation of the cell :\n")
+    file.puts("D  " + source.cell_name + "_3Dpassivation.txt  1.0 4.2 0.0 0.0 0.0\n")
+  end # do file
+
+  # now launch Fastercap !
+  system("FasterCap -b  " + file_FCinput + "  &gt;&gt;  " + File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapOutput.txt"))
+  
+  dimension = 0
+  j = 0
+  capex_mat = Array.new{Array.new}
+  capname = Array.new
+  
+  # Open the FasterCap output file to extract the Maxwell Capacitors matrix
+  file_FCoutput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapOutput.txt")
+  File.open(file_FCoutput, "r") do |file|
+    file.each_line do |line|
+      line = line.encode("UTF-8", :invalid =&gt; :replace, :undef =&gt; :replace)
+      i = 0
+      if (j&gt;0 &amp;&amp; j&lt;dimension+1)
+        for cap in line.split(' ') do
+          #print(cap + " = ")
+          if (i == 0)
+            capname[j] = cap
+          else
+            capex_mat[i][j] = cap.to_f/1e6
+#            print(capex_mat[i][j].to_s + "=C(" + i.to_s + "," + j.to_s + ") ; ") 
+          end
+          i = i+1
+        end # for
+#        print("\n")
+        j = j + 1
+      end # if j
+
+      if (line[0..8] == "Dimension")
+        dimension = line.split(' ')[3].to_i
+        print("cap_matrix dimension = " + dimension.to_s + "\n")
+        capex_mat = Array.new(dimension+1){Array.new(dimension+1)}
+        j = 1
+      end # if split
+    end # each line
+  end # do file
+
+
+  # Extract the Spice netlist from the Maxwell Capacitors matrix
+  file_FCoutput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_ext_cap.cir")
+  File.open(file_FCoutput, "w") do |file|
+    #print("*\n* All nodes parasitic capacitors of " + source.cell_name + "\n*\n")
+    file.puts("*\n* All nodes parasitic capacitors of " + source.cell_name + "\n*\n")
+    for j in (1 .. dimension) do
+      capii = 0
+      for i in (1 .. dimension) do
+        #print("C(" + i.to_s + "," + j.to_s + ")=" + capex_mat[i][j].to_s + "   ")
+        if (i&gt;j)
+          #print("Cext" + i.to_s + j.to_s + "  " + capname[i] + " " + capname[j] + "  " + (-capex_mat[i][j]).to_s + "\n")
+          file.puts("Cext" + i.to_s + j.to_s + "  " + capname[i] + " " + capname[j] + "  " + (-capex_mat[i][j]).to_s + "\n")
+        else
+          capii = capii + capex_mat[i][j]
+        end # if i=j
+      end # for i
+      #print("Cext" + j.to_s + j.to_s + "  " + capname[i] + " 0  " + capii.to_s + "\n")
+      file.puts("Cext" + j.to_s + j.to_s + "  " + capname[i] + " 0  " + capii.to_s + "\n")
+    end # for j
+  end # do file
+
+end # if FASTERCAP
+
+
+time = Time.now
+hours = ((time - tstart)/3600).to_i
+minutes = ((time - tstart)/60 - hours * 60).to_i
+seconds = ((time - tstart) - (minutes * 60 + hours * 3600)).to_i
+$stdout.write "LVS finished at : #{time.hour}:#{time.min}:#{time.sec}  -  LVS duration =  #{hours} hrs. #{minutes} min. #{seconds} sec.\n"</text>
+</klayout-macro>
