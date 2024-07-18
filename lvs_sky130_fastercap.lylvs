@@ -15,7 +15,10 @@
  <menu-path>tools_menu.lvs.end</menu-path>
  <interpreter>dsl</interpreter>
  <dsl-interpreter-name>lvs-dsl-xml</dsl-interpreter-name>
- <text>#
+ <text>
+require_relative "fc_model_builder"
+
+#
 # Extraction for SKY130
 #
 ############################
@@ -331,7 +334,9 @@ POLY.z_top = POLY.z_height + POLY.z_bot
 POLY.z_name = "POLY"
 
 LICON.z_height = 400.nm
-LICON.z_bot = 0.nm
+# @@@ linear chain only as of now
+# @@@ LICON.z_bot = 0.nm
+LICON.z_bot = POLY.z_top
 LICON.z_top = LICON.z_bot + LICON.z_height
 LICON.z_name = "LICON"
 
@@ -401,19 +406,19 @@ if FASTERCAP &amp;&amp; compare
     end
   end
   
-  def q2fastercap(ql, net, z)
-    "Q " + net_name(net) + "  " + ql.each_point_hull.collect do |pt|
+  def t2fastercap(tri, net, z, top)
+    pts = tri.each_point_hull.collect do |pt|
       (pt.x*1.dbu).to_s + " " + (pt.y*1.dbu).to_s + " " + z.to_s
-    end.join("  ")
+    end
+    if top
+      pts = pts.reverse
+    end
+    "T " + net_name(net) + "  " + pts.join("  ")
   end
 
-  def t2fastercap(tri, net, z)
-    "T " + net_name(net) + "  " + tri.each_point_hull.collect do |pt|
-      (pt.x*1.dbu).to_s + " " + (pt.y*1.dbu).to_s + " " + z.to_s
-    end.join("  ")
-  end
-
-  def e2fastercap(qe, net, z1, z2)
+  def e2fastercap(qe, net, zz1, zz2)
+    z1 = [zz1, zz2].min
+    z2 = [zz1, zz2].max
     "Q " + net_name(net) + "  " + 
            (qe.p1.x*1.dbu).to_s + " " + (qe.p1.y*1.dbu).to_s + " " + z1.to_s + " " + 
            (qe.p1.x*1.dbu).to_s + " " + (qe.p1.y*1.dbu).to_s + " " + z2.to_s + " " + 
@@ -421,47 +426,87 @@ if FASTERCAP &amp;&amp; compare
            (qe.p2.x*1.dbu).to_s + " " + (qe.p2.y*1.dbu).to_s + " " + z1.to_s
   end
 
+  debug_ly = RBA::Layout::new
+  debug_top = debug_ly.create_cell("TOP")
+  
   file_shapes = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_3Dshapes.txt")
   File.open(file_shapes, "w") do |file|
     for circuit in netlist.each_circuit() do
+    
       file.puts("*\n* circuit.name : " + circuit.name + "\n* ------------\n")
+      
       for net in circuit.each_net() do
+      
+        below = RBA::Region::new
+        zlast = nil
+      
         file.puts("*\n* net: " + net.expanded_name() + "\n")
+        
         # outputs the shapes for this net to layers : poly, contacts, metals, vias :
-        {2001 =&gt; POLY, 2002 =&gt; LICON, 2003 =&gt; LI, 2004 =&gt; MCON, 2005 =&gt; MET1, 2006 =&gt; VIA1, 2007 =&gt; MET2,
-         2008 =&gt; VIA2, 2009 =&gt; MET3, 2010 =&gt; VIA3, 2011 =&gt; MET4 }.each do |n,l|
-        #{POLY , LICON, LI, MCON, MET1, VIA1, MET2, VIA2, MET3, VIA3, MET4 }.each do |l|
-          netShape = l2n_data.shapes_of_net(net, l.data, true).delaunay(0.0, 1.0)
-          z_bot = l.z_bot
-          z_top = l.z_top
-          if (l.z_name &amp;&amp; !netShape.is_empty?)
+        [ 
+          [ 2001, POLY ],
+          [ 2002, LICON ],
+          [ 2003, LI ], 
+          [ 2004, MCON ], 
+          [ 2005, MET1 ],
+          [ 2006, VIA1 ],
+          [ 2007, MET2 ],
+          [ 2008, VIA2 ],
+          [ 2009, MET3 ],
+          [ 2010, VIA3 ],
+          [ 2011, MET4 ],
+          [ 2012, nil ] 
+        ].each do |n,l|
+
+          if l
+            z = l.z_bot
+            zz = l.z_top
             file.puts("* layer: " + l.z_name + "\n")
-          end # if
-          if (n!=2002 &amp;&amp; n!= 2004 &amp;&amp; n!= 2006 &amp;&amp; n!=2008 &amp;&amp; n!=2010) # if layers is not a contact or via
-            netShape.each do |triangle|
-              # describe as triangles, the bottom surface of poly and metals layers
-              line = t2fastercap(triangle, net, z_bot)
-              file.puts(line + "\n")
-            end # each quadrilater
-            netShape.each do |triangle|
-              # describe as triangles, the top surface of poly and metals layers
-              line = t2fastercap(triangle, net, z_top)
-              file.puts(line + "\n")
-            end # each quadrilater
-          end # if n!=... contact and vias
-          netShape = l2n_data.shapes_of_net(net, l.data, true)
-          netShape.edges.each do |qedge|
+          else
+            z = zz = zlast
+          end
+          
+          zlast = zz
+          
+          net_shapes = l ? l2n_data.shapes_of_net(net, l.data, true) : RBA::Region::new
+          new_shapes = net_shapes - below
+          lost_shapes = below - net_shapes
+          below = net_shapes
+            
+          net_shapes = net_shapes.merged
+          new_shapes = new_shapes.delaunay(0.0, 0.5)
+          lost_shapes = lost_shapes.delaunay(0.0, 0.5)
+          
+          debug_top.shapes(debug_ly.layer(n, 0)).insert(net_shapes)
+          debug_top.shapes(debug_ly.layer(n, 1)).insert(lost_shapes)
+          debug_top.shapes(debug_ly.layer(n, 2)).insert(new_shapes)
+          
+          lost_shapes.each do |triangle|
+            # describe as triangles, the top surface of poly and metals layers
+            line = t2fastercap(triangle, net, z, true)
+            file.puts(line + "\n")
+          end # each quadrilater
+          
+          new_shapes.each do |triangle|
+            # describe as triangles, the bottom surface of poly and metals layers
+            line = t2fastercap(triangle, net, z, false)
+            file.puts(line + "\n")
+          end # each quadrilater
+          
+          net_shapes.edges.each do |qedge|
             # describe as triangles, the border surface of poly, contacts, vias and metals layers
-            line = e2fastercap(qedge, net, z_top, z_bot)
+            line = e2fastercap(qedge, net, z, zz)
             file.puts(line + "\n")
           end # for qedge
+          
         end # each layer
 
+if false # @@@
         subGND = SUB - NWELL - DIFF - TAP
         z_top = 0.0
         # outputs the shapes for this net to layers : Nwell and active :
         {2001 =&gt; subGND, 2002 =&gt; NWELL, 2003 =&gt; DIFF, 2004 =&gt; TAP }.each do |n,l|
-          netShape = l2n_data.shapes_of_net(net, l.data, true).delaunay(0.0, 1.0)
+          netShape = l2n_data.shapes_of_net(net, l.data, true).delaunay(0.0, 0.5)
           if (l.z_name &amp;&amp; !l.is_empty?)
             file.puts("* layer: " + l.z_name + "\n")
           end # if
@@ -473,10 +518,12 @@ if FASTERCAP &amp;&amp; compare
           end # each quadrilater
         end # each layer
       end # for net
+end
     
     end # for circuit
   end # do file
   
+  debug_ly.write("debug.gds")
   
   file_passivation = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_3Dpassivation.txt")
   File.open(file_passivation, "w") do |file|
@@ -489,27 +536,27 @@ if FASTERCAP &amp;&amp; compare
 
     TOPpassivation = TOPMetal.sized(passivation_thickness)
     BOTpassivation = SUB - TOPpassivation
-    passivShapes = TOPpassivation.data.delaunay(0.0, 1.0)
+    passivShapes = TOPpassivation.data.delaunay(0.0, 0.5)
     passivShapes.each do |triangle|
       # describe as triangles, the bottom surface of poly and metals layers
-      line = t2fastercap(triangle, "PASS", z_bot)
+      line = t2fastercap(triangle, "PASS", z_bot, false)
       file.puts(line + "\n")
     end # each quadrilater
     passivShapes.each do |triangle|
       # describe as triangles, the top surface of poly and metals layers
-      line = t2fastercap(triangle, "PASS", z_top)
+      line = t2fastercap(triangle, "PASS", z_top, true)
       file.puts(line + "\n")
     end # each quadrilater
 
-    passivShapes = BOTpassivation.data.delaunay(0.0, 1.0)
+    passivShapes = BOTpassivation.data.delaunay(0.0, 0.5)
     passivShapes.each do |triangle|
       # describe as triangles, the bottom surface of poly and metals layers
-      line = t2fastercap(triangle, "PASS", z_bot)
+      line = t2fastercap(triangle, "PASS", z_bot, false)
       file.puts(line + "\n")
     end # each quadrilater
     passivShapes.each do |triangle|
       # describe as triangles, the top surface of poly and metals layers
-      line = t2fastercap(triangle, "PASS", z_top)
+      line = t2fastercap(triangle, "PASS", z_top, true)
       file.puts(line + "\n")
     end # each quadrilater
   end # do file
@@ -521,11 +568,11 @@ if FASTERCAP &amp;&amp; compare
     file.puts("C " + source.cell_name + "_3Dshapes.txt  4.2 0.0 0.0 0.0\n")
     file.puts("**  4.2 = dielectric constant of SiO2 = outer dielectric of the Metals\n*\n")
     file.puts("* passivation of the cell :\n")
-    file.puts("D  " + source.cell_name + "_3Dpassivation.txt  1.0 4.2 0.0 0.0 0.0\n")
+    #@@@file.puts("D  " + source.cell_name + "_3Dpassivation.txt  1.0 4.2 0.0 0.0 0.0\n")
   end # do file
 
   # now launch Fastercap !
-  system("FasterCap -b  " + file_FCinput + " &gt;" + File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapOutput.txt"))
+  system("FasterCap -a0.01 -b " + file_FCinput + " &gt;" + File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapOutput.txt"))
   
   dimension = 0
   j = 0
