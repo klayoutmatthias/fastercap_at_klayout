@@ -1,7 +1,7 @@
 
 # @begin A class providing a service for building FastCap2 or FasterCap models
 #
-# This class is use the following way:
+# This class is used the following way:
 # 
 # 1) Create a FCModelBuilder object
 #    Specify the default k value which is the k assumed for "empty space".
@@ -53,18 +53,24 @@ class FCModelBuilder
   end
   
   def add_dielectric(l, mat_name, **kwargs)
+    if l.respond_to?(:data)
+      l = l.data
+    end
     _add_layer(l, true, mat_name, **kwargs)
   end
   
   def add_conductor(l, net_name, **kwargs)
+    if l.respond_to?(:data)
+      l = l.data
+    end
     _add_layer(l, false, net_name, **kwargs)
   end
   
-  def _z2norm
+  def _z2norm(z)
     (z / @res + 1e-6).floor
   end
   
-  def _norm2z
+  def _norm2z(z)
     z * @res
   end
   
@@ -79,18 +85,20 @@ class FCModelBuilder
       zstop = kwargs[:zz] || kwargs[:zstop] || raise("Stop z has to be given either as height (h) or explicitly (zz/zstop)")
     end
     if dielectric
-      (@dlayers[name] ||= []) << [ l, z2norm(zstart), z2norm(zstop) ]
+      (@dlayers[name] ||= []) << [ l, _z2norm(zstart), _z2norm(zstop) ]
     else
-      (@clayers[name] ||= []) << [ l, z2norm(zstart), z2norm(zstop) ]
+      (@clayers[name] ||= []) << [ l, _z2norm(zstart), _z2norm(zstop) ]
     end
   end
   
   def generate
   
     z = []
-    @layers.each do |k,v|
-      v.each do |l|
-        z += l[2..3]
+    [ @dlayers, @clayers ].each do |ll|
+      ll.each do |k,v|
+        v.each do |l|
+          z += l[1..2]
+        end
       end
     end
     z = z.sort.uniq
@@ -111,10 +119,10 @@ class FCModelBuilder
     
       @dlayers.each do |mn,v|
         v.each do |l|
-          if l[2] <= zcurr && l[3] > zcurr
+          if l[1] <= zcurr && l[2] > zcurr
             gen.add_in(l[0], "-" + mn)
           end
-          if l[2] < zcurr && l[3] >= zcurr
+          if l[1] < zcurr && l[2] >= zcurr
             gen.add_out(l[0], "-" + mn)
           end
         end
@@ -122,10 +130,10 @@ class FCModelBuilder
       
       @clayers.each do |nn,v|
         v.each do |l|
-          if l[2] <= zcurr && l[3] > zcurr
+          if l[1] <= zcurr && l[2] > zcurr
             gen.add_in(l[0], "+" + nn)
           end
-          if l[2] < zcurr && l[3] >= zcurr
+          if l[1] < zcurr && l[2] >= zcurr
             gen.add_out(l[0], "+" + nn)
           end
         end
@@ -169,12 +177,14 @@ class FCModelGenerator
   end
   
   def add_in(l, name)
-    (@layers_in[name] ||= []) << l - @all_in
+    @layers_in[name] ||= RBA::Region::new
+    @layers_in[name] += l - @all_in
     @all_in += l
   end
   
   def add_out(l, name)
-    (@layers_out[name] ||= []) << l - @all_out
+    @layers_out[name] ||= RBA::Region::new
+    @layers_out[name] += l - @all_out
     @all_out += l
   end
   
@@ -193,6 +203,7 @@ class FCModelGenerator
       lin, lout = lin - lout, lout - lin
       all_cin += lin
       all_cout += lout
+      @state[mk] ||= RBA::Region::new
       @state[mk] += lin
       @state[mk] -= lout
     end
@@ -221,13 +232,13 @@ class FCModelGenerator
           lout = dout[mno]
           if lout
             d = lout & lin
-            if !d.empty?
+            if !d.is_empty?
               generate_hdiel(mno, mni, d)
             end
             lin -= lout
           end
         end
-        if !lin.empty?
+        if !lin.is_empty?
           generate_hdiel(nil, mni, lin)
         end
       end
@@ -244,7 +255,7 @@ class FCModelGenerator
             lout -= lin
           end
         end
-        if !lout.empty?
+        if !lout.is_empty?
           generate_hdiel(mno, nil, lout)
         end
       end
@@ -259,13 +270,13 @@ class FCModelGenerator
           lout = dout[mno]
           if lout
             d = lout & lin
-            if !d.empty?
+            if !d.is_empty?
               generate_hcond_in(nn, mno, d)
             end
             lin -= lout
           end
         end
-        if !lin.empty?
+        if !lin.is_empty?
           generate_hcond_in(nn, nil, lin)
         end
       end
@@ -281,13 +292,13 @@ class FCModelGenerator
           lin = din[mni]
           if lin
             d = lout & lin
-            if !d.empty?
+            if !d.is_empty?
               generate_hcond_out(nn, mni, d)
             end
             lout -= lin
           end
         end
-        if !lout.empty?
+        if !lout.is_empty?
           generate_hcond_out(nn, nil, lout)
         end
       end
