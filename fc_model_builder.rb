@@ -7,8 +7,8 @@
 #    Specify the default k value which is the k assumed for "empty space".
 #    You can also specify a maximum area and the "b" parameter for the 
 #    triangulation. The b parameter corresponds to the minimum angle
-#    and should be >=1 (b=0.5/sin(a_min)).
-#    I.e. b=1 -> a_min=30 deg, b=2 -> a_min~14.5 deg.
+#    and should be <=1 (b=sin(min_angle)*2).
+#    I.e. b=1 -> min_angle=30 deg, b=0.5 -> min_angle~14.5 deg.
 #
 # 2) Add material definitions for the dielectrics
 # 
@@ -40,7 +40,7 @@ class FCModelBuilder
     @k_space = k_space
     @dbu = dbu
     @b_value = kwargs[:b] || 1.0
-    @amin_value = kwargs[:amin]
+    @amax_value = kwargs[:amax] || 0.0
     @materials = {}
     @dlayers = {}
     @clayers = {}
@@ -109,7 +109,7 @@ class FCModelBuilder
 
     gen = FCModelGenerator::new(@materials, @clayers.keys)
     gen.k_default = @k_space
-    gen.amin = @amin_value
+    gen.amax = @amax_value
     gen.b = @b_value
     gen.dbu = @dbu
     
@@ -142,6 +142,9 @@ class FCModelBuilder
       gen.finish_z
     
     end
+
+    # self-check
+    gen.check
   
   end
 
@@ -150,7 +153,7 @@ end
 class FCModelGenerator
 
   attr_accessor :k_default
-  attr_accessor :amin
+  attr_accessor :amax
   attr_accessor :b
   attr_accessor :dbu
 
@@ -161,8 +164,8 @@ class FCModelGenerator
     @zz = nil
     @state = {}
     @k_default = 1.0
-    @amin = 0.0
-    @b = 2.0
+    @amax = 0.0
+    @b = 0.5
     @diel_data = {}
     @cond_data = {}
     @dbu = 0.001
@@ -190,6 +193,8 @@ class FCModelGenerator
   
   def finish_z
   
+    puts "Finishing layer z=#{@z}"
+
     din = {}
     dout = {}
     
@@ -198,7 +203,7 @@ class FCModelGenerator
     @net_names.each do |nn|
       mk = "+" + nn
       lin = @layers_in[mk] || RBA::Region::new
-      lout = @layers_in[mk] || RBA::Region::new
+      lout = @layers_out[mk] || RBA::Region::new
       # cancel in/out and out/in
       lin, lout = lin - lout, lout - lin
       all_cin += lin
@@ -211,7 +216,7 @@ class FCModelGenerator
     @materials.keys.each do |mn|
       mk = "-" + mn
       lin = @layers_in[mk] || RBA::Region::new
-      lout = @layers_in[mk] || RBA::Region::new
+      lout = @layers_out[mk] || RBA::Region::new
       # cancel in/out and out/in
       lin, lout = lin - lout, lout - lin
       lin -= all_cin
@@ -233,12 +238,14 @@ class FCModelGenerator
           if lout
             d = lout & lin
             if !d.is_empty?
+              puts "Generating dielectric surface #{mno} <-> #{mni} with area #{d.area * @dbu * @dbu}"
               generate_hdiel(mno, mni, d)
             end
             lin -= lout
           end
         end
         if !lin.is_empty?
+          puts "Generating dielectric surface (void) <-> #{mni} with area #{lin.area * @dbu * @dbu}"
           generate_hdiel(nil, mni, lin)
         end
       end
@@ -256,6 +263,7 @@ class FCModelGenerator
           end
         end
         if !lout.is_empty?
+          puts "Generating dielectric surface #{mno} <-> (void) with area #{lout.area * @dbu * @dbu}"
           generate_hdiel(mno, nil, lout)
         end
       end
@@ -308,6 +316,8 @@ class FCModelGenerator
   
   def next_z(z)
   
+    puts "Next layer z=#{z} .."
+
     if !@z
       @z = z
       return
@@ -361,7 +371,7 @@ class FCModelGenerator
           end
         end
         loutside.each do |e|
-          generate_vdiel(nn, mno, nil, e)
+          generate_vdiel(mno, nil, e)
         end
       end
     end
@@ -396,9 +406,9 @@ class FCModelGenerator
     k = [ below, above ]
     data = (@diel_data[k] ||= [])
     rp = nil
-    layer.delaunay(@amin, @b).each do |t|
+    layer.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
       # note: normal is facing downwards (to "below")
-      tri = t.each.collect { |pt| [pt.x * @dbu, pt.y * @dbu, @z] }
+      tri = t.each_point_hull.collect { |pt| [pt.x * @dbu, pt.y * @dbu, @z] }
       data << tri
     end
   end
@@ -413,11 +423,11 @@ class FCModelGenerator
     data = (@diel_data[k] ||= [])
     r = RBA::Region::new
     r.insert(RBA::Box::new(0, 0, el, (@zz - @z) / @dbu))
-    layer.delaunay(@amin, @b).each do |t|
+    r.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
       p0 = dbu_trans * edge.p1
       d = dbu_trans * edge.d
       # note: normal is facing outwards (to "left")
-      tri = t.each.collect do |pt| 
+      tri = t.each_point_hull.collect do |pt| 
         pxy = p0 + d * (pt.x.to_f / el.to_f)
         pz = pt.y * @dbu + @z
         [pxy.x, pxy.y, pz]
@@ -430,9 +440,9 @@ class FCModelGenerator
     k = [ nn, below ]
     data = (@cond_data[k] ||= [])
     rp = nil
-    layer.delaunay(@amin, @b).each do |t|
+    layer.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
       # note: normal is facing downwards (to "below")
-      tri = t.each.collect { |pt| [pt.x * @dbu, pt.y * @dbu, @z] }
+      tri = t.each_point_hull.collect { |pt| [pt.x * @dbu, pt.y * @dbu, @z] }
       data << tri
     end
   end
@@ -441,9 +451,9 @@ class FCModelGenerator
     k = [ nn, above ]
     data = (@cond_data[k] ||= [])
     rp = nil
-    layer.delaunay(@amin, @b).each do |t|
+    layer.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
       # note: normal is facing downwards (into conductor)
-      tri = t.each.collect { |pt| [pt.x * @dbu, pt.y * @dbu, @z] }
+      tri = t.each_point_hull.collect { |pt| [pt.x * @dbu, pt.y * @dbu, @z] }
       # now it is facing outside (to "above")
       data << tri.reverse
     end
@@ -459,17 +469,113 @@ class FCModelGenerator
     data = (@cond_data[k] ||= [])
     r = RBA::Region::new
     r.insert(RBA::Box::new(0, 0, el, (@zz - @z) / @dbu))
-    layer.delaunay(@amin, @b).each do |t|
+    r.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
       p0 = dbu_trans * edge.p1
       d = dbu_trans * edge.d
       # note: normal is facing outwards (to "left")
-      tri = t.each.collect do |pt| 
+      tri = t.each_point_hull.collect do |pt| 
         pxy = p0 + d * (pt.x.to_f / el.to_f)
         pz = pt.y * @dbu + @z
         [pxy.x, pxy.y, pz]
       end
       data << tri
     end
+  end
+
+  def check
+
+    puts "Checking .."
+    errors = 0
+
+    @materials.each do |mn|
+
+      tris = _collect_diel_tris(mn)
+      puts "Material #{mn} -> #{tris.size} triangles"
+
+      edge_hash = {}
+      edges = _normed_edges(tris)
+
+      edges.each do |e|
+        if edge_hash[e]
+          puts "ERROR: material '#{mn}': duplicate edge #{_edge2s(e)}"
+          errors += 1
+        else
+          edge_hash[e] = true
+        end
+      end 
+
+      edges.each do |e|
+        if !edge_hash[e.reverse]
+          puts "ERROR: material '#{mn}': edge #{_edge2s(e)} not connected with reverse edge (open surface)"
+          errors += 1
+        end
+      end
+
+    end
+
+    errors
+
+  end
+
+  def _edge2s(e)
+    "(%.12g,%.12g,%12g)-(%12g,%12g,%12g)" % (e.p1 + e.p2)
+  end
+
+  def _normed_edges(tris)
+
+    edges = []
+
+    tris.each do |t|
+      3.times each do |i|
+        p1 = t[i]
+        p2 = t[(i + 1) % 3]
+        p1 = p1.collect { |c| (c / @dbu + 0.5).floor }
+        p2 = p2.collect { |c| (c / @dbu + 0.5).floor }
+        edges << [ p1, p2 ]
+      end
+    end
+
+    edges
+
+  end
+
+  def _collect_diel_tris(mn)
+
+    tris = []
+
+    @diel_data.each do |k,v|
+      outside, inside = k
+      if outside == mn
+        tris += v
+      elsif inside == mn
+        tris += v.collect { |t| t.reverse }
+      end
+    end
+        
+    @cond_data.each do |k,v|
+      nn, outside = k
+      if outside == mn
+        tris += v
+      end
+    end
+        
+    return tris
+
+  end
+
+  def _collect_cond_tris(net_name)
+
+    tris = []
+
+    @cond_data.each do |k,v|
+      nn, outside = k
+      if nn == net_name
+        tris += v.collect { |t| t.reverse }
+      end
+    end
+        
+    return tris
+
   end
 
 end
