@@ -383,7 +383,8 @@ class FCModelGenerator
             if loutside
               d = loutside & linside
               d.each do |e|
-                generate_vdiel(mno, mni, e)
+                # NOTE: we need to swap points as we started from "outside"
+                generate_vdiel(mno, mni, e.swapped_points)
               end
               linside -= loutside
             end
@@ -406,7 +407,8 @@ class FCModelGenerator
             loutside = loutside.edges
             d = loutside & linside
             d.each do |e|
-              generate_vcond(nn, mno, e)
+              # NOTE: we need to swap points as we started from "outside"
+              generate_vcond(nn, mno, e.swapped_points)
             end
             linside -= loutside
           end
@@ -430,30 +432,32 @@ class FCModelGenerator
       # note: normal is facing downwards (to "below")
       tri = t.each_point_hull.collect { |pt| [pt.x * @dbu, pt.y * @dbu, @z] }
       data << tri
+      puts "  #{tri.to_s}"
     end
   end
 
   def generate_vdiel(left, right, edge)
     puts "Generating vertical dielectric surface #{left || '(void)'} <-> #{right || '(void)'} with edge #{edge.to_s}"
-    el = edge.length
-    if el == 0
+    if edge.is_degenerate?
       return
     end
+    el = Math.sqrt(edge.sq_length)
     k = [ left, right ]
     dbu_trans = RBA::CplxTrans::new(@dbu)
     data = (@diel_data[k] ||= [])
     r = RBA::Region::new
-    r.insert(RBA::Box::new(0, 0, el, (@zz - @z) / @dbu))
+    r.insert(RBA::Box::new(0, 0, el, ((@zz - @z) / @dbu + 0.5).floor))
     r.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
       p0 = dbu_trans * edge.p1
       d = dbu_trans * edge.d
       # note: normal is facing outwards (to "left")
       tri = t.each_point_hull.collect do |pt| 
-        pxy = p0 + d * (pt.x.to_f / el.to_f)
+        pxy = p0 + d * (pt.x.to_f / el)
         pz = pt.y * @dbu + @z
         [pxy.x, pxy.y, pz]
       end
       data << tri
+      puts "  #{tri.to_s}"
     end
   end
 
@@ -466,6 +470,7 @@ class FCModelGenerator
       # note: normal is facing downwards (to "below")
       tri = t.each_point_hull.collect { |pt| [pt.x * @dbu, pt.y * @dbu, @z] }
       data << tri
+      puts "  #{tri.to_s}"
     end
   end
 
@@ -479,30 +484,32 @@ class FCModelGenerator
       tri = t.each_point_hull.collect { |pt| [pt.x * @dbu, pt.y * @dbu, @z] }
       # now it is facing outside (to "above")
       data << tri.reverse
+      puts "  #{tri.reverse.to_s}"
     end
   end
 
   def generate_vcond(nn, left, edge)
     puts "Generating vertical conductor surface #{nn} <-> #{left || '(void)'} with edge #{edge.to_s}"
-    el = edge.length
-    if el == 0
+    if edge.is_degenerate?
       return
     end
+    el = Math.sqrt(edge.sq_length)
     k = [ nn, left ]
     dbu_trans = RBA::CplxTrans::new(@dbu)
     data = (@cond_data[k] ||= [])
     r = RBA::Region::new
-    r.insert(RBA::Box::new(0, 0, el, (@zz - @z) / @dbu))
+    r.insert(RBA::Box::new(0, 0, el, ((@zz - @z) / @dbu + 0.5).floor))
     r.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
       p0 = dbu_trans * edge.p1
       d = dbu_trans * edge.d
       # note: normal is facing outwards (to "left")
       tri = t.each_point_hull.collect do |pt| 
-        pxy = p0 + d * (pt.x.to_f / el.to_f)
+        pxy = p0 + d * (pt.x.to_f / el)
         pz = pt.y * @dbu + @z
         [pxy.x, pxy.y, pz]
       end
       data << tri
+      puts "  #{tri.to_s}"
     end
   end
 
@@ -511,7 +518,7 @@ class FCModelGenerator
     puts "Checking .."
     errors = 0
 
-    @materials.each do |mn|
+    @materials.keys.each do |mn|
 
       tris = _collect_diel_tris(mn)
       puts "Material #{mn} -> #{tris.size} triangles"
@@ -528,7 +535,7 @@ class FCModelGenerator
         end
       end 
 
-      edges.each do |e|
+      edge_hash.keys.each do |e|
         if !edge_hash[e.reverse]
           puts "ERROR: material '#{mn}': edge #{_edge2s(e)} not connected with reverse edge (open surface)"
           errors += 1
@@ -537,12 +544,14 @@ class FCModelGenerator
 
     end
 
+    # TODO: check conductors
+
     errors
 
   end
 
   def _edge2s(e)
-    "(%.12g,%.12g,%12g)-(%12g,%12g,%12g)" % (e.p1 + e.p2)
+    "(%.12g,%.12g,%.12g)-(%.12g,%.12g,%.12g)" % (e[0].collect { |c| c * @dbu } + e[1].collect { |c| c * @dbu })
   end
 
   def _normed_edges(tris)
@@ -550,7 +559,7 @@ class FCModelGenerator
     edges = []
 
     tris.each do |t|
-      3.times each do |i|
+      3.times do |i|
         p1 = t[i]
         p2 = t[(i + 1) % 3]
         p1 = p1.collect { |c| (c / @dbu + 0.5).floor }
