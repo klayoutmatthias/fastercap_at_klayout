@@ -143,8 +143,7 @@ class FCModelBuilder
     
     end
 
-    # self-check
-    gen.check
+    gen
   
   end
 
@@ -514,7 +513,30 @@ class FCModelGenerator
     end
   end
 
+  def dump_stl
+
+    @materials.keys.each do |mn|
+
+      tris = _collect_diel_tris(mn)
+      _write_as_stl("diel_#{mn}.stl", tris)
+
+    end
+
+    @net_names.each do |nn|
+
+      tris = _collect_cond_tris(nn)
+      _write_as_stl("cond_#{nn}.stl", tris)
+
+    end
+
+  end
+
   def check
+
+    if @amax > 1e-6 || @b > 1e-6
+      puts "*** WARNING: cannot perform checking with confined Delaunay tesselation"
+      return
+    end
 
     puts "Checking .."
     errors = 0
@@ -523,7 +545,6 @@ class FCModelGenerator
 
       tris = _collect_diel_tris(mn)
       puts "Material #{mn} -> #{tris.size} triangles"
-      _write_as_stl("diel_#{mn}.stl", tris)
 
       edge_hash = {}
       edges = _normed_edges(tris)

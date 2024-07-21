@@ -27,7 +27,7 @@ rm1_nitride_h = rm1.sized(100)
 rm2_nitride_l = RBA::Region::new(bbox)
 rm2_nitride_h = rm2.sized(100)
 
-fcm = FCModelBuilder::new(3.5, ly.dbu, amax: 0.0, b: 0.5)
+fcm = FCModelBuilder::new(3.5, ly.dbu, amax: 0.0, b: 0.0)
 
 fcm.add_material("nit", 7.0)
 
@@ -46,4 +46,11 @@ fcm.add_conductor(rm2, "Net1", z: z, h: h)
 fcm.add_dielectric(rm2_nitride_l, "nit", z: z, h: hnit)
 fcm.add_dielectric(rm2_nitride_h, "nit", z: z, h: hnit + h)
 
-fcm.generate
+gen = fcm.generate
+
+# self-check
+gen.check
+
+# dump as STL file
+gen.dump_stl
+
