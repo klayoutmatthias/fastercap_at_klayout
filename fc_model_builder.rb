@@ -238,14 +238,12 @@ class FCModelGenerator
           if lout
             d = lout & lin
             if !d.is_empty?
-              puts "Generating dielectric surface #{mno} <-> #{mni} with area #{d.area * @dbu * @dbu}"
               generate_hdiel(mno, mni, d)
             end
             lin -= lout
           end
         end
         if !lin.is_empty?
-          puts "Generating dielectric surface (void) <-> #{mni} with area #{lin.area * @dbu * @dbu}"
           generate_hdiel(nil, mni, lin)
         end
       end
@@ -263,7 +261,6 @@ class FCModelGenerator
           end
         end
         if !lout.is_empty?
-          puts "Generating dielectric surface #{mno} <-> (void) with area #{lout.area * @dbu * @dbu}"
           generate_hdiel(mno, nil, lout)
         end
       end
@@ -403,6 +400,7 @@ class FCModelGenerator
   end  
   
   def generate_hdiel(below, above, layer)
+    puts "Generating horizontal dielectric surface #{below || '(void)'} <-> #{above || '(void)'} with area #{layer.area * @dbu * @dbu}"
     k = [ below, above ]
     data = (@diel_data[k] ||= [])
     rp = nil
@@ -414,6 +412,7 @@ class FCModelGenerator
   end
 
   def generate_vdiel(left, right, edge)
+    puts "Generating vertical dielectric surface #{left || '(void)'} <-> #{right || '(void)'} with edge #{RBA::CplxTrans::new(@dbu) * edge}"
     el = edge.length
     if el == 0
       return
@@ -437,6 +436,7 @@ class FCModelGenerator
   end
 
   def generate_hcond_in(nn, below, layer)
+    puts "Generating horizontal bottom conductor surface #{below || '(void)'} <-> #{nn} with area #{layer.area * @dbu * @dbu}"
     k = [ nn, below ]
     data = (@cond_data[k] ||= [])
     rp = nil
@@ -448,6 +448,7 @@ class FCModelGenerator
   end
 
   def generate_hcond_out(nn, above, layer)
+    puts "Generating horizontal top conductor surface #{nn} <-> #{above || '(void)'} with area #{layer.area * @dbu * @dbu}"
     k = [ nn, above ]
     data = (@cond_data[k] ||= [])
     rp = nil
@@ -460,6 +461,7 @@ class FCModelGenerator
   end
 
   def generate_vcond(nn, left, edge)
+    puts "Generating vertical conductor surface #{nn} <-> #{left || '(void)'} with edge #{RBA::CplxTrans::new(@dbu) * edge}"
     el = edge.length
     if el == 0
       return
