@@ -145,6 +145,8 @@ class FCModelBuilder
     
     end
 
+    gen.finalize
+
     gen
   
   end
@@ -513,28 +515,42 @@ class FCModelGenerator
   end
 
   def generate_vcond(nn, left, edge)
+
     @logger && @logger.debug("Generating vertical conductor surface #{nn} <-> #{left || '(void)'} with edge #{edge.to_s}")
+
     if edge.is_degenerate?
       return
     end
+
     el = Math.sqrt(edge.sq_length)
     k = [ nn, left ]
     dbu_trans = RBA::CplxTrans::new(@dbu)
     data = (@cond_data[k] ||= [])
+
     r = RBA::Region::new
     r.insert(RBA::Box::new(0, 0, el, ((@zz - @z) / @dbu + 0.5).floor))
     r.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
+
       p0 = dbu_trans * edge.p1
       d = dbu_trans * edge.d
+
       # note: normal is facing outwards (to "left")
       tri = t.each_point_hull.collect do |pt| 
         pxy = p0 + d * (pt.x.to_f / el)
         pz = pt.y * @dbu + @z
         [pxy.x, pxy.y, pz]
       end
+
       data << tri
+
       @logger && @logger.debug("  #{tri.to_s}")
+
     end
+
+  end
+
+  def finalize
+
   end
 
   def dump_stl
@@ -568,7 +584,7 @@ class FCModelGenerator
     @materials.keys.each do |mn|
 
       tris = _collect_diel_tris(mn)
-      @logger && @logger.debug("Material #{mn} -> #{tris.size} triangles")
+      @logger && @logger.info("Material #{mn} -> #{tris.size} triangles")
 
       edge_hash = {}
       edges = _normed_edges(tris)
@@ -594,7 +610,7 @@ class FCModelGenerator
     @net_names.each do |nn|
 
       tris = _collect_cond_tris(nn)
-      @logger && @logger.debug("Net #{nn} -> #{tris.size} triangles")
+      @logger && @logger.info("Net #{nn} -> #{tris.size} triangles")
 
       edge_hash = {}
       edges = _normed_edges(tris)
