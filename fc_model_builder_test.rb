@@ -1,6 +1,11 @@
 
+require "logger"
+
 #require_relative "fc_model_builder"
 load File.join(File.dirname(__FILE__), "fc_model_builder.rb")
+
+logger = Logger.new(STDOUT)
+logger.level = Logger::INFO
 
 ly = RBA::Layout::new
 top = ly.create_cell("TOP")
@@ -27,7 +32,7 @@ rm1_nitride_h = rm1.sized(100)
 rm2_nitride_l = RBA::Region::new(bbox)
 rm2_nitride_h = rm2.sized(100)
 
-fcm = FCModelBuilder::new(3.5, ly.dbu, amax: 0.0, b: 0.0)
+fcm = FCModelBuilder::new(3.5, ly.dbu, amax: 0.0, b: 0.0, logger: logger)
 
 fcm.add_material("nit", 7.0)
 

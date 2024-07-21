@@ -30,13 +30,10 @@
 #    The model is a string with the geometry definitions. This string
 #    can be used as input for FasterCap or FastCap2.
 
-# TODO:
-# @@@ Generator for the files
-# @@@ Some debugging features ..
-
 class FCModelBuilder
 
   def initialize(k_space, dbu, **kwargs)
+
     @k_space = k_space
     @dbu = dbu
     @b_value = kwargs[:b] || 1.0
@@ -44,8 +41,13 @@ class FCModelBuilder
     @materials = {}
     @dlayers = {}
     @clayers = {}
-    @z = 0.0
-    @res = 0.001 # 1nm resolution
+    @z = nil
+    @logger = kwargs[:logger]
+
+    @logger && @logger.info("DBU: #{'%.12g' % @dbu}")
+    @logger && @logger.info("Delaunay b: #{'%.12g' % @b_value}")
+    @logger && @logger.info("Delaunay amax: #{'%.12g' % @amax_value} um^2")
+
   end
   
   def add_material(name, k)
@@ -67,11 +69,11 @@ class FCModelBuilder
   end
   
   def _z2norm(z)
-    (z / @res + 1e-6).floor
+    (z / @dbu + 1e-6).floor
   end
   
   def _norm2z(z)
-    z * @res
+    z * @dbu
   end
   
   def _add_layer(l, dielectric, name, **kwargs)
@@ -107,7 +109,7 @@ class FCModelBuilder
       return
     end
 
-    gen = FCModelGenerator::new(@materials, @clayers.keys)
+    gen = FCModelGenerator::new(@materials, @clayers.keys, @logger)
     gen.k_default = @k_space
     gen.amax = @amax_value
     gen.b = @b_value
@@ -156,7 +158,9 @@ class FCModelGenerator
   attr_accessor :b
   attr_accessor :dbu
 
-  def initialize(materials, net_names)
+  def initialize(materials, net_names, logger)
+
+    @logger = logger
     @materials = materials
     @net_names = net_names
     @z = nil
@@ -169,6 +173,7 @@ class FCModelGenerator
     @diel_data = {}
     @cond_data = {}
     @dbu = 0.001
+
   end
   
   def reset
@@ -177,20 +182,20 @@ class FCModelGenerator
   end
   
   def add_in(l, name)
-    puts "add_in: #{name} -> #{l.to_s}" 
+    @logger && @logger.debug("add_in: #{name} -> #{l.to_s}" )
     @layers_in[name] ||= RBA::Region::new
     @layers_in[name] += l
   end
   
   def add_out(l, name)
-    puts "add_out: #{name} -> #{l.to_s}" 
+    @logger && @logger.debug("add_out: #{name} -> #{l.to_s}" )
     @layers_out[name] ||= RBA::Region::new
     @layers_out[name] += l
   end
   
   def finish_z
   
-    puts "Finishing layer z=#{@z}"
+    @logger && @logger.debug("Finishing layer z=#{@z}")
 
     din = {}
     dout = {}
@@ -213,10 +218,10 @@ class FCModelGenerator
         # compute merged events
         @current[mk] ||= []
         lin, lout, current = _merge_events(@current[mk], @layers_in[mk], @layers_out[mk])
-        puts "Merged events & status for '#{mk}':"
-        puts "  in = #{lin.to_s}"
-        puts "  out = #{lout.to_s}"
-        puts "  state = #{current.to_s}"
+        @logger && @logger.debug("Merged events & status for '#{mk}':")
+        @logger && @logger.debug("  in = #{lin.to_s}")
+        @logger && @logger.debug("  out = #{lout.to_s}")
+        @logger && @logger.debug("  state = #{current.to_s}")
 
         # legalize in and out events
         lin_org = lin.dup
@@ -236,10 +241,10 @@ class FCModelGenerator
         din[mk] = lin
         dout[mk] = lout
 
-        puts "Legalized events & status for '#{mk}':"
-        puts "  in = #{din[mk].to_s}"
-        puts "  out = #{dout[mk].to_s}"
-        puts "  state = #{@state[mk].to_s}"
+        @logger && @logger.debug("Legalized events & status for '#{mk}':")
+        @logger && @logger.debug("  in = #{din[mk].to_s}")
+        @logger && @logger.debug("  out = #{dout[mk].to_s}")
+        @logger && @logger.debug("  state = #{@state[mk].to_s}")
 
         all_in += lin
         all_out += lout
@@ -254,15 +259,15 @@ class FCModelGenerator
 
     end
 
-    puts "All conductor region in: #{all_cin.to_s}"
-    puts "All conductor region out: #{all_cout.to_s}"
+    @logger && @logger.debug("All conductor region in: #{all_cin.to_s}")
+    @logger && @logger.debug("All conductor region out: #{all_cout.to_s}")
 
     # check whether the states are separated
     a = @state.values.inject(:+)
     @state.each do |k,s|
       r = s - a
       if ! r.is_empty?
-        puts "*** ERROR: state region of '#{k}' (#{s.to_s}) is not contained entirely in remaining all state region (#{a.to_s}) - this means there is an overlap"
+        @logger && @logger.error("State region of '#{k}' (#{s.to_s}) is not contained entirely in remaining all state region (#{a.to_s}) - this means there is an overlap")
       end
       a -= s
     end
@@ -352,7 +357,7 @@ class FCModelGenerator
   
   def next_z(z)
   
-    puts "Next layer z=#{z} .."
+    @logger && @logger.debug("Next layer z=#{z} ..")
 
     self.reset 
 
@@ -424,72 +429,91 @@ class FCModelGenerator
   end  
   
   def generate_hdiel(below, above, layer)
-    puts "Generating horizontal dielectric surface #{below || '(void)'} <-> #{above || '(void)'} as #{layer.to_s}"
+
+    @logger && @logger.debug("Generating horizontal dielectric surface #{below || '(void)'} <-> #{above || '(void)'} as #{layer.to_s}")
+
     k = [ below, above ]
     data = (@diel_data[k] ||= [])
-    rp = nil
+
     layer.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
       # note: normal is facing downwards (to "below")
       tri = t.each_point_hull.collect { |pt| [pt.x * @dbu, pt.y * @dbu, @z] }
       data << tri
-      puts "  #{tri.to_s}"
+      @logger && @logger.debug("  #{tri.to_s}")
     end
+
   end
 
   def generate_vdiel(left, right, edge)
-    puts "Generating vertical dielectric surface #{left || '(void)'} <-> #{right || '(void)'} with edge #{edge.to_s}"
+
+    @logger && @logger.debug("Generating vertical dielectric surface #{left || '(void)'} <-> #{right || '(void)'} with edge #{edge.to_s}")
+
     if edge.is_degenerate?
       return
     end
+
     el = Math.sqrt(edge.sq_length)
     k = [ left, right ]
     dbu_trans = RBA::CplxTrans::new(@dbu)
     data = (@diel_data[k] ||= [])
+
     r = RBA::Region::new
     r.insert(RBA::Box::new(0, 0, el, ((@zz - @z) / @dbu + 0.5).floor))
     r.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
+
       p0 = dbu_trans * edge.p1
       d = dbu_trans * edge.d
+
       # note: normal is facing outwards (to "left")
       tri = t.each_point_hull.collect do |pt| 
         pxy = p0 + d * (pt.x.to_f / el)
         pz = pt.y * @dbu + @z
         [pxy.x, pxy.y, pz]
       end
+
       data << tri
-      puts "  #{tri.to_s}"
+
+      @logger && @logger.debug("  #{tri.to_s}")
+
     end
+
   end
 
   def generate_hcond_in(nn, below, layer)
-    puts "Generating horizontal bottom conductor surface #{below || '(void)'} <-> #{nn} as #{layer.to_s}"
+
+    @logger && @logger.debug("Generating horizontal bottom conductor surface #{below || '(void)'} <-> #{nn} as #{layer.to_s}")
+
     k = [ nn, below ]
     data = (@cond_data[k] ||= [])
-    rp = nil
+
     layer.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
       # note: normal is facing downwards (to "below")
       tri = t.each_point_hull.collect { |pt| [pt.x * @dbu, pt.y * @dbu, @z] }
       data << tri
-      puts "  #{tri.to_s}"
+      @logger && @logger.debug("  #{tri.to_s}")
     end
+
   end
 
   def generate_hcond_out(nn, above, layer)
-    puts "Generating horizontal top conductor surface #{nn} <-> #{above || '(void)'} as #{layer.to_s}"
+
+    @logger && @logger.debug("Generating horizontal top conductor surface #{nn} <-> #{above || '(void)'} as #{layer.to_s}")
+
     k = [ nn, above ]
     data = (@cond_data[k] ||= [])
-    rp = nil
+
     layer.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
       # note: normal is facing downwards (into conductor)
       tri = t.each_point_hull.collect { |pt| [pt.x * @dbu, pt.y * @dbu, @z] }
       # now it is facing outside (to "above")
       data << tri.reverse
-      puts "  #{tri.reverse.to_s}"
+      @logger && @logger.debug("  #{tri.reverse.to_s}")
     end
+
   end
 
   def generate_vcond(nn, left, edge)
-    puts "Generating vertical conductor surface #{nn} <-> #{left || '(void)'} with edge #{edge.to_s}"
+    @logger && @logger.debug("Generating vertical conductor surface #{nn} <-> #{left || '(void)'} with edge #{edge.to_s}")
     if edge.is_degenerate?
       return
     end
@@ -509,7 +533,7 @@ class FCModelGenerator
         [pxy.x, pxy.y, pz]
       end
       data << tri
-      puts "  #{tri.to_s}"
+      @logger && @logger.debug("  #{tri.to_s}")
     end
   end
 
@@ -534,24 +558,24 @@ class FCModelGenerator
   def check
 
     if @amax > 1e-6 || @b > 1e-6
-      puts "*** WARNING: cannot perform checking with confined Delaunay tesselation"
+      @logger && @logger.warn("Cannot perform checking with confined Delaunay tesselation")
       return
     end
 
-    puts "Checking .."
+    @logger && @logger.info("Checking ..")
     errors = 0
 
     @materials.keys.each do |mn|
 
       tris = _collect_diel_tris(mn)
-      puts "Material #{mn} -> #{tris.size} triangles"
+      @logger && @logger.debug("Material #{mn} -> #{tris.size} triangles")
 
       edge_hash = {}
       edges = _normed_edges(tris)
 
       edges.each do |e|
         if edge_hash[e]
-          puts "ERROR: material '#{mn}': duplicate edge #{_edge2s(e)}"
+          @logger && @logger.error("Material '#{mn}': duplicate edge #{_edge2s(e)}")
           errors += 1
         else
           edge_hash[e] = true
@@ -560,7 +584,7 @@ class FCModelGenerator
 
       edge_hash.keys.each do |e|
         if !edge_hash[e.reverse]
-          puts "ERROR: material '#{mn}': edge #{_edge2s(e)} not connected with reverse edge (open surface)"
+          @logger && @logger.error("Material '#{mn}': edge #{_edge2s(e)} not connected with reverse edge (open surface)")
           errors += 1
         end
       end
@@ -570,15 +594,14 @@ class FCModelGenerator
     @net_names.each do |nn|
 
       tris = _collect_cond_tris(nn)
-      puts "Net #{nn} -> #{tris.size} triangles"
-      _write_as_stl("cond_#{nn}.stl", tris)
+      @logger && @logger.debug("Net #{nn} -> #{tris.size} triangles")
 
       edge_hash = {}
       edges = _normed_edges(tris)
 
       edges.each do |e|
         if edge_hash[e]
-          puts "ERROR: net '#{nn}': duplicate edge #{_edge2s(e)}"
+          @logger && @logger.error("Net '#{nn}': duplicate edge #{_edge2s(e)}")
           errors += 1
         else
           edge_hash[e] = true
@@ -587,7 +610,7 @@ class FCModelGenerator
 
       edge_hash.keys.each do |e|
         if !edge_hash[e.reverse]
-          puts "ERROR: net '#{nn}': edge #{_edge2s(e)} not connected with reverse edge (open surface)"
+          @logger && @logger.error("Net '#{nn}': edge #{_edge2s(e)} not connected with reverse edge (open surface)")
           errors += 1
         end
       end
@@ -595,9 +618,9 @@ class FCModelGenerator
     end
 
     if errors == 0
-      puts "  No errors found!"
+      @logger && @logger.info("  No errors found!")
     else
-      puts "  #{errors} error(s) found"
+      @logger && @logger.info("  #{errors} error(s) found")
     end
 
     errors
@@ -606,7 +629,7 @@ class FCModelGenerator
 
   def _write_as_stl(filename, tris)
 
-    puts "Writing STL file #{filename} .."
+    @logger && @logger.info("Writing STL file #{filename} ..")
 
     File.open(filename, "w") do |file|
 
