@@ -163,6 +163,7 @@ class FCModelGenerator
     @z = nil
     @zz = nil
     @state = {}
+    @current = {}
     @k_default = 1.0
     @amax = 0.0
     @b = 0.5
@@ -209,27 +210,27 @@ class FCModelGenerator
       names.each do |nn|
 
         mk = prefix + nn
-        lin = @layers_in[mk] ? @layers_in[mk].dup : RBA::Region::new
-        lout = @layers_out[mk] ? @layers_out[mk].dup : RBA::Region::new
 
-        # cancel in/out and out/in
-        lin, lout = lin - lout, lout - lin
+        # compute merged events
+        @current[mk] ||= []
+        lin, lout, current = _merge_events(@current[mk], @layers_in[mk], @layers_out[mk])
+        puts "Merged events & status for '#{mk}':"
+        puts "  in = #{lin.to_s}"
+        puts "  out = #{lout.to_s}"
+        puts "  state = #{current.to_s}"
 
-        @state[mk] ||= RBA::Region::new
-        st = @state[mk] + lin - lout
-
+        # legalize in and out events
+        lin_org = lin.dup
+        lout_org = lout.dup
         lout -= all
         lin -= all
-        lout += st & all_in
-        lin += st & all_out
+        lout += current & all_in
+        lin += current & all_out
+        lin -= lout_org
+        lout -= lin_org
 
-        if @layers_out[mk]
-          lin -= @layers_out[mk]
-        end
-        if @layers_in[mk]
-          lout -= @layers_in[mk]
-        end
-
+        # tracks the legalized horizontal cuts
+        @state[mk] ||= RBA::Region::new
         @state[mk] += lin
         @state[mk] -= lout
 
@@ -547,6 +548,52 @@ class FCModelGenerator
     # TODO: check conductors
 
     errors
+
+  end
+
+  def _merge_events(pyra, lin, lout)
+    
+    if lin
+      lin = lin.dup
+    else
+      lin = RBA::Region::new
+    end
+
+    if lout
+      lout = lout.dup
+    else
+      lout = RBA::Region::new
+    end
+
+    past = (pyra[0] ? pyra[0].dup : RBA::Region::new)
+
+    pyra.size.times do |i|
+      ii = pyra.size - i
+      added = lin & pyra[ii - 1]
+      if !added.is_empty?
+        pyra[ii] ||= RBA::Region::new
+        pyra[ii] += added
+        lin -= added
+      end
+    end
+
+    pyra[0] ||= RBA::Region::new
+    pyra[0] += lin
+
+    pyra.size.times do |i|
+      ii = pyra.size - i
+      removed = lout & pyra[ii - 1]
+      if !removed.is_empty?
+        pyra[ii - 1] -= removed
+        lout -= removed
+      end
+    end
+
+    # compute merged events
+    lin = pyra[0] - past
+    lout = past - pyra[0]
+
+    return [lin, lout, pyra[0]]
 
   end
 
