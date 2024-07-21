@@ -33,13 +33,6 @@ net2.shapes(m1).insert(RBA::Box::new(-1000, 0, -600, 400))
 net2.shapes(v1).insert(RBA::Box::new(-900, 100, -700, 300))
 net2.shapes(m2).insert(RBA::Box::new(-1000, 0, -600, 400))
 
-bbox = top.bbox.enlarged(3000)
-
-# generate some nitride liner
-
-rm1_nitride_l = RBA::Region::new(bbox)
-rm2_nitride_l = RBA::Region::new(bbox)
-
 fcm = FCModelBuilder::new(3.5, ly.dbu, amax: 0.5, b: 0.5, logger: logger)
 
 fcm.add_material("nit", 4.5)
@@ -56,8 +49,6 @@ net_cells.each do |cell|
   rnit = r.sized(100)
   fcm.add_dielectric(rnit, "nit", z: z, h: hnit + h)
 end
-
-fcm.add_dielectric(rm1_nitride_l, "nit", z: z, h: hnit)
 
 z += h
 
@@ -78,8 +69,6 @@ net_cells.each do |cell|
   rnit = r.sized(100)
   fcm.add_dielectric(rnit, "nit", z: z, h: hnit + h)
 end
-
-fcm.add_dielectric(rm2_nitride_l, "nit", z: z, h: hnit)
 
 gen = fcm.generate
 
