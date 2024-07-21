@@ -1,4 +1,8 @@
 
+# Run this example with 
+#
+# ./run_klayout.sh -b -r fc_model_builder_test.rb
+
 require "logger"
 
 #require_relative "fc_model_builder"

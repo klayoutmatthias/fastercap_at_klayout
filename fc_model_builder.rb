@@ -11,7 +11,6 @@
 #    I.e. b=1 -> min_angle=30 deg, b=0.5 -> min_angle~14.5 deg.
 #
 # 2) Add material definitions for the dielectrics
-# 
 #    Each material definition consists of a k value and 
 #    a material name.
 #
@@ -26,9 +25,14 @@
 #
 #    * As dielectric layer: specify the material name
 #
-# 4) Generate a 3d model using "generate_model"
-#    The model is a string with the geometry definitions. This string
-#    can be used as input for FasterCap or FastCap2.
+#    The layers can intersect. The package resolves intersections
+#    based on priority: conductors first, dielectrics according to
+#    their position in the "materials" definition (first entries have
+#    higher prio)
+#
+# 4) Generate a 3d model using "generate"
+#    This method returns an object you can use to generate STL files
+#    or FastCap files.
 
 class FCModelBuilder
 
