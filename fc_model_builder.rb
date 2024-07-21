@@ -117,17 +117,6 @@ class FCModelBuilder
     
       gen.next_z(_norm2z(zcurr))
     
-      @dlayers.each do |mn,v|
-        v.each do |l|
-          if l[1] <= zcurr && l[2] > zcurr
-            gen.add_in(l[0], "-" + mn)
-          end
-          if l[1] < zcurr && l[2] >= zcurr
-            gen.add_out(l[0], "-" + mn)
-          end
-        end
-      end
-      
       @clayers.each do |nn,v|
         v.each do |l|
           if l[1] <= zcurr && l[2] > zcurr
@@ -135,6 +124,17 @@ class FCModelBuilder
           end
           if l[1] < zcurr && l[2] >= zcurr
             gen.add_out(l[0], "+" + nn)
+          end
+        end
+      end
+      
+      @dlayers.each do |mn,v|
+        v.each do |l|
+          if l[1] <= zcurr && l[2] > zcurr
+            gen.add_in(l[0], "-" + mn)
+          end
+          if l[1] < zcurr && l[2] >= zcurr
+            gen.add_out(l[0], "-" + mn)
           end
         end
       end
@@ -172,23 +172,20 @@ class FCModelGenerator
   end
   
   def reset
-    @all_in = RBA::Region::new
-    @all_out = RBA::Region::new
     @layers_in = {}
     @layers_out = {}
   end
   
   def add_in(l, name)
-    
+    puts "add_in: #{name} -> #{l.to_s}" 
     @layers_in[name] ||= RBA::Region::new
-    @layers_in[name] += l - @all_in
-    @all_in += l
+    @layers_in[name] += l
   end
   
   def add_out(l, name)
+    puts "add_out: #{name} -> #{l.to_s}" 
     @layers_out[name] ||= RBA::Region::new
-    @layers_out[name] += l - @all_out
-    @all_out += l
+    @layers_out[name] += l
   end
   
   def finish_z
@@ -198,43 +195,87 @@ class FCModelGenerator
     din = {}
     dout = {}
     
-    all_cin = RBA::Region::new
-    all_cout = RBA::Region::new
-    @net_names.each do |nn|
-      mk = "+" + nn
-      lin = @layers_in[mk] || RBA::Region::new
-      lout = @layers_out[mk] || RBA::Region::new
-      # cancel in/out and out/in
-      lin, lout = lin - lout, lout - lin
-      all_cin += lin
-      all_cout += lout
-      @state[mk] ||= RBA::Region::new
-      @state[mk] += lin
-      @state[mk] -= lout
+    all_in = RBA::Region::new
+    all_out = RBA::Region::new
+    all = RBA::Region::new
+
+    all_cin = nil
+    all_cout = nil
+
+    [ [ @net_names, "+" ], [ @materials.keys, "-" ] ].each do |np|
+
+      names, prefix = np
+
+      names.each do |nn|
+
+        mk = prefix + nn
+        lin = @layers_in[mk] ? @layers_in[mk].dup : RBA::Region::new
+        lout = @layers_out[mk] ? @layers_out[mk].dup : RBA::Region::new
+
+        # cancel in/out and out/in
+        lin, lout = lin - lout, lout - lin
+
+        @state[mk] ||= RBA::Region::new
+        st = @state[mk] + lin - lout
+
+        lout -= all
+        lin -= all
+        lout += st & all_in
+        lin += st & all_out
+
+        if @layers_out[mk]
+          lin -= @layers_out[mk]
+        end
+        if @layers_in[mk]
+          lout -= @layers_in[mk]
+        end
+
+        @state[mk] += lin
+        @state[mk] -= lout
+
+        din[mk] = lin
+        dout[mk] = lout
+
+        puts "Legalized events & status for '#{mk}':"
+        puts "  in = #{din[mk].to_s}"
+        puts "  out = #{dout[mk].to_s}"
+        puts "  state = #{@state[mk].to_s}"
+
+        all_in += lin
+        all_out += lout
+        all += @state[mk]
+
+      end
+
+      if prefix == "+"
+        all_cin = all_in.dup
+        all_cout = all_out.dup
+      end
+
     end
-    
-    @materials.keys.each do |mn|
-      mk = "-" + mn
-      lin = @layers_in[mk] || RBA::Region::new
-      lout = @layers_out[mk] || RBA::Region::new
-      # cancel in/out and out/in
-      lin, lout = lin - lout, lout - lin
-      lin -= all_cin
-      lout = all_cout
-      din[mn] = lin
-      dout[mn] = lout
-      @state[mk] ||= RBA::Region::new
-      @state[mk] += lin
-      @state[mk] -= lout
+
+    puts "All conductor region in: #{all_cin.to_s}"
+    puts "All conductor region out: #{all_cout.to_s}"
+
+    # check whether the states are separated
+    a = @state.values.inject(:+)
+    @state.each do |k,s|
+      r = s - a
+      if ! r.is_empty?
+        puts "*** ERROR: state region of '#{k}' (#{s.to_s}) is not contained entirely in remaining all state region (#{a.to_s}) - this means there is an overlap"
+      end
+      a -= s
     end
+
+    # Now we have legalized the in and out events
     
     @materials.keys.each do |mni|
-      lin = din[mni]
+      lin = din["-" + mni]
       if lin
         lin = lin.dup
         lin -= all_cout  # handled with the conductor
         @materials.keys.each do |mno|
-          lout = dout[mno]
+          lout = dout["-" + mno]
           if lout
             d = lout & lin
             if !d.is_empty?
@@ -250,12 +291,12 @@ class FCModelGenerator
     end
     
     @materials.keys.each do |mno|
-      lout = dout[mno]
+      lout = dout["-" + mno]
       if lout
         lout = lout.dup
         lout -= all_cin  # handled with the conductor
         @materials.keys.each do |mni|
-          lin = din[mni]
+          lin = din["-" + mni]
           if lin
             lout -= lin
           end
@@ -267,12 +308,11 @@ class FCModelGenerator
     end
     
     @net_names.each do |nn|
-      mk = "+" + nn
-      lin = @layers_in[mk]
+      lin = din["+" + nn]
       if lin
         lin = lin.dup
         @materials.keys.each do |mno|
-          lout = dout[mno]
+          lout = dout["-" + mno]
           if lout
             d = lout & lin
             if !d.is_empty?
@@ -288,13 +328,12 @@ class FCModelGenerator
     end
     
     @net_names.each do |nn|
-      mk = "+" + nn
-      lout = @layers_out[mk]
+      lout = dout["+" + nn]
       if lout
         lout = lout.dup
         lout -= all_cin  # handled with the conductor
         @materials.keys.each do |mni|
-          lin = din[mni]
+          lin = din["-" + mni]
           if lin
             d = lout & lin
             if !d.is_empty?
@@ -356,25 +395,6 @@ class FCModelGenerator
       end
     end
     
-    @materials.keys.each do |mno|
-      loutside = @state["-" + mno]
-      if loutside
-        loutside = loutside.edges
-        loutside -= all_cond  # handled with the conductor
-        @materials.keys.each do |mni|
-          if mno != mni
-            linside = state["-" + mni]
-            if linside
-              loutside -= linside
-            end
-          end
-        end
-        loutside.each do |e|
-          generate_vdiel(mno, nil, e)
-        end
-      end
-    end
-    
     @net_names.each do |nn|
       mk = "+" + nn
       linside = @state[mk]
@@ -402,7 +422,7 @@ class FCModelGenerator
   end  
   
   def generate_hdiel(below, above, layer)
-    puts "Generating horizontal dielectric surface #{below || '(void)'} <-> #{above || '(void)'} with area #{layer.area * @dbu * @dbu}"
+    puts "Generating horizontal dielectric surface #{below || '(void)'} <-> #{above || '(void)'} as #{layer.to_s}"
     k = [ below, above ]
     data = (@diel_data[k] ||= [])
     rp = nil
@@ -414,7 +434,7 @@ class FCModelGenerator
   end
 
   def generate_vdiel(left, right, edge)
-    puts "Generating vertical dielectric surface #{left || '(void)'} <-> #{right || '(void)'} with edge #{RBA::CplxTrans::new(@dbu) * edge}"
+    puts "Generating vertical dielectric surface #{left || '(void)'} <-> #{right || '(void)'} with edge #{edge.to_s}"
     el = edge.length
     if el == 0
       return
@@ -438,7 +458,7 @@ class FCModelGenerator
   end
 
   def generate_hcond_in(nn, below, layer)
-    puts "Generating horizontal bottom conductor surface #{below || '(void)'} <-> #{nn} with area #{layer.area * @dbu * @dbu}"
+    puts "Generating horizontal bottom conductor surface #{below || '(void)'} <-> #{nn} as #{layer.to_s}"
     k = [ nn, below ]
     data = (@cond_data[k] ||= [])
     rp = nil
@@ -450,7 +470,7 @@ class FCModelGenerator
   end
 
   def generate_hcond_out(nn, above, layer)
-    puts "Generating horizontal top conductor surface #{nn} <-> #{above || '(void)'} with area #{layer.area * @dbu * @dbu}"
+    puts "Generating horizontal top conductor surface #{nn} <-> #{above || '(void)'} as #{layer.to_s}"
     k = [ nn, above ]
     data = (@cond_data[k] ||= [])
     rp = nil
@@ -463,7 +483,7 @@ class FCModelGenerator
   end
 
   def generate_vcond(nn, left, edge)
-    puts "Generating vertical conductor surface #{nn} <-> #{left || '(void)'} with edge #{RBA::CplxTrans::new(@dbu) * edge}"
+    puts "Generating vertical conductor surface #{nn} <-> #{left || '(void)'} with edge #{edge.to_s}"
     el = edge.length
     if el == 0
       return
