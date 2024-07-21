@@ -32,9 +32,9 @@
 
 class FCModelBuilder
 
-  def initialize(k_space, dbu, **kwargs)
+  def initialize(k_void, dbu, **kwargs)
 
-    @k_space = k_space
+    @k_void = k_void
     @dbu = dbu
     @b_value = kwargs[:b] || 1.0
     @amax_value = kwargs[:amax] || 0.0
@@ -110,7 +110,7 @@ class FCModelBuilder
     end
 
     gen = FCModelGenerator::new(@materials, @clayers.keys, @logger)
-    gen.k_default = @k_space
+    gen.k_void = @k_void
     gen.amax = @amax_value
     gen.b = @b_value
     gen.dbu = @dbu
@@ -155,7 +155,7 @@ end
 
 class FCModelGenerator
 
-  attr_accessor :k_default
+  attr_accessor :k_void
   attr_accessor :amax
   attr_accessor :b
   attr_accessor :dbu
@@ -169,7 +169,7 @@ class FCModelGenerator
     @zz = nil
     @state = {}
     @current = {}
-    @k_default = 1.0
+    @k_void = 1.0
     @amax = 0.0
     @b = 0.5
     @diel_data = {}
@@ -585,6 +585,27 @@ class FCModelGenerator
 
     end
 
+    dk = {}
+    @diel_data.keys.each do |k|
+      kk = [k[1], k[0]]
+      if !dk[kk]
+        dk[k] = []
+      else 
+        @logger && @logger.debug("Combining dielectric surfaces #{kk[0] || 'void'} <-> #{kk[1] || 'void'} with reverse")
+      end
+    end
+
+    @diel_data.each do |k,v|
+      kk = [k[1], k[0]]
+      if dk[kk]
+        dk[kk] += v.collect { |t| t.reverse } 
+      else
+        dk[k] += v
+      end
+    end
+        
+    @diel_data = dk
+
   end
 
   def dump_stl
@@ -600,6 +621,104 @@ class FCModelGenerator
 
       tris = _collect_cond_tris(nn)
       _write_as_stl("cond_#{nn}.stl", tris)
+
+    end
+
+  end
+
+  def write_fastcap(prefix)
+
+    lst_fn = prefix + ".lst"
+
+    file_num = 0
+    lst_file = []
+
+    lst_file << "* k_void=" + ("%.12g" % @k_void)
+
+    @diel_data.keys.each do |k|
+
+      data = @diel_data[k]
+
+      if data.empty?
+        next
+      end
+
+      file_num += 1
+
+      outside, inside = k
+
+      k_outside = outside ? @materials[outside] : @k_void
+      k_inside = inside ? @materials[inside] : @k_void
+
+      lst_file << "* Dielectric interface: outside=#{outside || '(void)'}, inside=#{inside || '(void)'}"
+
+      fn = prefix + "_" + file_num.to_s + ".geo"
+      _write_fastcap_geo(file_num, fn, data, nil)
+
+      # compute one reference point "outside"
+      t0 = data[0]
+      v1 = 3.times.collect { |i| t0[1][i] - t0[0][i] }
+      v2 = 3.times.collect { |i| t0[2][i] - t0[0][i] }
+      vp = [ v1[1] * v2[2] - v1[2] * v2[1], -v1[0] * v2[2] + v1[2] * v2[0], v1[0] * v2[1] - v1[1] * v2[0] ]
+      vp_abs = Math::sqrt(vp[0] * vp[0] + vp[1] * vp[1] + vp[2] * vp[2])
+      rp = 3.times.collect { |i| t0[0][i] + vp[i] / vp_abs }
+      rp_s = rp.collect { |c| "%.12g" % c }.join(" ")
+
+      lst_file << "D #{fn}  #{'%.12g' % k_outside}  #{'%.12g' % k_inside}  0 0 0  #{rp_s}"
+
+    end
+
+    first_cond = true
+
+    @cond_data.keys.each do |k|
+
+      data = @cond_data[k]
+
+      if data.empty?
+        next
+      end
+
+      file_num += 1
+
+      nn, outside = k
+
+      k_outside = outside ? @materials[outside] : @k_void
+
+      lst_file << "* Conductor interface: outside=#{outside || '(void)'}, net=#{nn}"
+
+      fn = prefix + "_" + file_num.to_s + ".geo"
+      _write_fastcap_geo(file_num, fn, data, nn)
+
+      lst_file << "C #{fn}  #{'%.12g' % k_outside}  0 0 0  +"
+
+      first_cond = false
+
+    end
+
+    @logger && @logger.info("Writing FasterCap list file: #{lst_fn}")
+    File.open(lst_fn, "w") do |file|
+      file.write(lst_file.join("\n"))
+      file.write("\n")
+    end
+
+  end
+
+  def _write_fastcap_geo(num, fn, data, cond_name)
+
+    @logger && @logger.info("Writing FasterCap geo file: #{fn}")
+    File.open(fn, "w") do |file|
+
+      data.each do |t|
+        file.write("T #{num}")
+        t.each do |p|
+          file.write("  " + p.collect { |c| '%.12g' % c }.join(" "))
+        end
+        file.write("\n")
+      end
+
+      if cond_name
+        file.write("N #{num} #{cond_name}\n")
+      end
 
     end
 
