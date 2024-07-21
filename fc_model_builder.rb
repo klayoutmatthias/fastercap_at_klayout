@@ -169,7 +169,6 @@ class FCModelGenerator
     @diel_data = {}
     @cond_data = {}
     @dbu = 0.001
-    self.reset
   end
   
   def reset
@@ -180,6 +179,7 @@ class FCModelGenerator
   end
   
   def add_in(l, name)
+    
     @layers_in[name] ||= RBA::Region::new
     @layers_in[name] += l - @all_in
     @all_in += l
@@ -314,6 +314,8 @@ class FCModelGenerator
   def next_z(z)
   
     puts "Next layer z=#{z} .."
+
+    self.reset 
 
     if !@z
       @z = z
