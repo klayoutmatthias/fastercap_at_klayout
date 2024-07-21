@@ -523,6 +523,7 @@ class FCModelGenerator
 
       tris = _collect_diel_tris(mn)
       puts "Material #{mn} -> #{tris.size} triangles"
+      _write_as_stl("diel_#{mn}.stl", tris)
 
       edge_hash = {}
       edges = _normed_edges(tris)
@@ -545,9 +546,66 @@ class FCModelGenerator
 
     end
 
-    # TODO: check conductors
+    @net_names.each do |nn|
+
+      tris = _collect_cond_tris(nn)
+      puts "Net #{nn} -> #{tris.size} triangles"
+      _write_as_stl("cond_#{nn}.stl", tris)
+
+      edge_hash = {}
+      edges = _normed_edges(tris)
+
+      edges.each do |e|
+        if edge_hash[e]
+          puts "ERROR: net '#{nn}': duplicate edge #{_edge2s(e)}"
+          errors += 1
+        else
+          edge_hash[e] = true
+        end
+      end 
+
+      edge_hash.keys.each do |e|
+        if !edge_hash[e.reverse]
+          puts "ERROR: net '#{nn}': edge #{_edge2s(e)} not connected with reverse edge (open surface)"
+          errors += 1
+        end
+      end
+
+    end
+
+    if errors == 0
+      puts "  No errors found!"
+    else
+      puts "  #{errors} error(s) found"
+    end
 
     errors
+
+  end
+
+  def _write_as_stl(filename, tris)
+
+    puts "Writing STL file #{filename} .."
+
+    File.open(filename, "w") do |file|
+
+      file.write("solid stl\n")
+
+      tris.each do |t|
+
+        file.write(" facet normal 0 0 0\n")
+        file.write("  outer loop\n")
+        t.each do |p|
+          file.write("   vertex %.12g %.12g %.12g\n" % p)
+        end
+        file.write("  endloop\n")
+        file.write(" endfacet\n")
+
+      end
+
+      file.write("endsolid stl\n")
+
+    end
 
   end
 

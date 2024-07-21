@@ -27,7 +27,7 @@ rm1_nitride_h = rm1.sized(100)
 rm2_nitride_l = RBA::Region::new(bbox)
 rm2_nitride_h = rm2.sized(100)
 
-fcm = FCModelBuilder::new(3.5, ly.dbu, amin: 0.0, b: 0.0)
+fcm = FCModelBuilder::new(3.5, ly.dbu, amax: 0.0, b: 0.5)
 
 fcm.add_material("nit", 7.0)
 
