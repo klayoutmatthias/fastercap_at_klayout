@@ -173,7 +173,9 @@ class FCModelGenerator
     @amax = 0.0
     @b = 0.5
     @diel_data = {}
+    @diel_vdata = {}
     @cond_data = {}
+    @cond_vdata = {}
     @dbu = 0.001
 
   end
@@ -455,29 +457,17 @@ class FCModelGenerator
     end
 
     el = Math.sqrt(edge.sq_length)
-    k = [ left, right ]
-    dbu_trans = RBA::CplxTrans::new(@dbu)
-    data = (@diel_data[k] ||= [])
 
-    r = RBA::Region::new
-    r.insert(RBA::Box::new(0, 0, el, ((@zz - @z) / @dbu + 0.5).floor))
-    r.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
+    de = RBA::DVector::new(edge.d.x / el, edge.d.y / el)
+    ne = RBA::DVector::new(edge.d.y / el, -edge.d.x / el)
+    p0 = ne * ne.sprod(RBA::DPoint::new(edge.p1) - RBA::DPoint::new) + RBA::DPoint::new
 
-      p0 = dbu_trans * edge.p1
-      d = dbu_trans * edge.d
+    x1 = (edge.p1 - p0).sprod(de)
+    x2 = (edge.p2 - p0).sprod(de)
 
-      # note: normal is facing outwards (to "left")
-      tri = t.each_point_hull.collect do |pt| 
-        pxy = p0 + d * (pt.x.to_f / el)
-        pz = pt.y * @dbu + @z
-        [pxy.x, pxy.y, pz]
-      end
-
-      data << tri
-
-      @logger && @logger.debug("  #{tri.to_s}")
-
-    end
+    k = [ left, right, p0, de ]
+    @diel_vdata[k] ||= RBA::Region::new
+    @diel_vdata[k].insert(RBA::Box::new(x1, (@z / @dbu + 0.5).floor, x2, (@zz / @dbu + 0.5).floor))
 
   end
 
@@ -523,33 +513,77 @@ class FCModelGenerator
     end
 
     el = Math.sqrt(edge.sq_length)
-    k = [ nn, left ]
-    dbu_trans = RBA::CplxTrans::new(@dbu)
-    data = (@cond_data[k] ||= [])
 
-    r = RBA::Region::new
-    r.insert(RBA::Box::new(0, 0, el, ((@zz - @z) / @dbu + 0.5).floor))
-    r.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
+    de = RBA::DVector::new(edge.d.x / el, edge.d.y / el)
+    ne = RBA::DVector::new(edge.d.y / el, -edge.d.x / el)
+    p0 = ne * ne.sprod(RBA::DPoint::new(edge.p1) - RBA::DPoint::new) + RBA::DPoint::new
 
-      p0 = dbu_trans * edge.p1
-      d = dbu_trans * edge.d
+    x1 = (edge.p1 - p0).sprod(de)
+    x2 = (edge.p2 - p0).sprod(de)
 
-      # note: normal is facing outwards (to "left")
-      tri = t.each_point_hull.collect do |pt| 
-        pxy = p0 + d * (pt.x.to_f / el)
-        pz = pt.y * @dbu + @z
-        [pxy.x, pxy.y, pz]
-      end
-
-      data << tri
-
-      @logger && @logger.debug("  #{tri.to_s}")
-
-    end
+    k = [ nn, left, p0, de ]
+    @cond_vdata[k] ||= RBA::Region::new
+    @cond_vdata[k].insert(RBA::Box::new(x1, (@z / @dbu + 0.5).floor, x2, (@zz / @dbu + 0.5).floor))
 
   end
 
   def finalize
+
+    dbu_trans = RBA::CplxTrans::new(@dbu)
+
+    @diel_vdata.keys.each do |k|
+
+      r = @diel_vdata[k]
+      left, right, p0, de = k
+
+      @logger && @logger.debug("Finishing vertical dielectric plane #{left || 'void'} <-> #{right || 'void'} at #{p0.to_s}/#{de.to_s}")
+
+      kk = [ left, right ]
+      data = (@diel_data[kk] ||= [])
+
+      r.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
+
+        # note: normal is facing outwards (to "left")
+        tri = t.each_point_hull.collect do |pt| 
+          pxy = (p0 + de * pt.x) * @dbu
+          pz = pt.y * @dbu
+          [pxy.x, pxy.y, pz]
+        end
+
+        data << tri
+
+        @logger && @logger.debug("  #{tri.to_s}")
+
+      end
+
+    end
+
+    @cond_vdata.keys.each do |k|
+
+      r = @cond_vdata[k]
+      nn, left, p0, de = k
+
+      @logger && @logger.debug("Finishing vertical conductor plane #{nn} <-> #{left || 'void'} at #{p0.to_s}/#{de.to_s}")
+
+      kk = [ nn, left ]
+      data = (@cond_data[kk] ||= [])
+
+      r.delaunay(@amax / (@dbu * @dbu), @b).each do |t|
+
+        # note: normal is facing outwards (to "left")
+        tri = t.each_point_hull.collect do |pt| 
+          pxy = (p0 + de * pt.x) * @dbu
+          pz = pt.y * @dbu
+          [pxy.x, pxy.y, pz]
+        end
+
+        data << tri
+
+        @logger && @logger.debug("  #{tri.to_s}")
+
+      end
+
+    end
 
   end
 
@@ -655,7 +689,7 @@ class FCModelGenerator
 
         file.write(" facet normal 0 0 0\n")
         file.write("  outer loop\n")
-        t.each do |p|
+        t.reverse.each do |p|
           file.write("   vertex %.12g %.12g %.12g\n" % p)
         end
         file.write("  endloop\n")

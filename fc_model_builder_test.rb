@@ -5,7 +5,7 @@ require "logger"
 load File.join(File.dirname(__FILE__), "fc_model_builder.rb")
 
 logger = Logger.new(STDOUT)
-logger.level = Logger::INFO
+logger.level = Logger::DEBUG
 
 ly = RBA::Layout::new
 top = ly.create_cell("TOP")
