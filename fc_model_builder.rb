@@ -394,6 +394,7 @@ class FCModelGenerator
           if mno != mni
             loutside = @state["-" + mno]
             if loutside
+              loutside = loutside.edges
               d = loutside & linside
               d.each do |e|
                 # NOTE: we need to swap points as we started from "outside"
@@ -801,6 +802,10 @@ class FCModelGenerator
   end
 
   def _write_as_stl(filename, tris)
+  
+    if tris.empty?
+      return
+    end
 
     @logger && @logger.info("Writing STL file #{filename} ..")
 

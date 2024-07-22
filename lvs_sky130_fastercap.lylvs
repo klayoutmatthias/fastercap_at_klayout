@@ -308,94 +308,6 @@ end
 
 ##########  PARASITIC CAPACITORS EXTRACTION based on FASTERCAP
 
-# @brief   To extend the DRC::DRCLayer class
-#
-class DRC::DRCLayer
-  attr_accessor :z_bot, :z_height, :z_top, :z_name
-  def default()
-    @z_bot = 0.um
-    @z_height = 1.um
-    @z_top = 1.um
-    @z_name = "LAY_NAME"  # the name is used only for validation
-  end
-end
-
-
-NWELL.default()
-NWELL.z_name = "NWELL"
-DIFF.default()
-DIFF.z_name = "DIFF"
-TAP.default()
-TAP.z_name = "TAP"
-
-POLY.z_height = 250.nm
-POLY.z_bot = 5.nm
-POLY.z_top = POLY.z_height + POLY.z_bot
-POLY.z_name = "POLY"
-
-LICON.z_height = 400.nm
-# @@@ linear chain only as of now
-# @@@ LICON.z_bot = 0.nm
-LICON.z_bot = POLY.z_top
-LICON.z_top = LICON.z_bot + LICON.z_height
-LICON.z_name = "LICON"
-
-LI.z_height = 200.nm
-LI.z_bot = LICON.z_top
-LI.z_top = LI.z_bot + LI.z_height
-LI.z_name = "LI"
-
-MCON.z_height = 350.nm
-MCON.z_bot = LI.z_top
-MCON.z_top = MCON.z_bot + MCON.z_height
-MCON.z_name = "MCON"
-
-MET1.z_height = 300.nm
-MET1.z_bot = MCON.z_top
-MET1.z_top = MET1.z_bot + MET1.z_height
-MET1.z_name = "MET1"
-
-VIA1.z_height = 350.nm
-VIA1.z_bot = MET1.z_top
-VIA1.z_top = VIA1.z_bot + VIA1.z_height
-VIA1.z_name = "VIA1"
-
-MET2.z_height = 300.nm
-MET2.z_bot = VIA1.z_top
-MET2.z_top = MET2.z_bot + MET2.z_height
-MET2.z_name = "MET2"
-
-VIA2.z_height = 350.nm
-VIA2.z_bot = MET2.z_top
-VIA2.z_top = VIA2.z_bot + VIA2.z_height
-VIA2.z_name = "VIA2"
-
-MET3.z_height = 300.nm
-MET3.z_bot = VIA2.z_top
-MET3.z_top = MET3.z_bot + MET3.z_height
-MET3.z_name = "MET3"
-
-VIA3.z_height = 350.nm
-VIA3.z_bot = MET3.z_top
-VIA3.z_top = VIA3.z_bot + VIA3.z_height
-VIA3.z_name = "VIA3"
-
-MET4.z_height = 500.nm
-MET4.z_bot = VIA3.z_top
-MET4.z_top = MET4.z_bot + MET4.z_height
-MET4.z_name = "MET4"
-
-VIA4.z_height = 400.nm
-VIA4.z_bot = MET4.z_top
-VIA4.z_top = VIA4.z_bot + VIA4.z_height
-VIA4.z_name = "VIA4"
-
-MET5.z_height = 500.nm
-MET5.z_bot = VIA4.z_top
-MET5.z_top = MET5.z_bot + MET5.z_height
-MET5.z_name = "MET5"
-
-
 if FASTERCAP &amp;&amp; compare
 
   def net_name(net)
@@ -406,173 +318,146 @@ if FASTERCAP &amp;&amp; compare
     end
   end
   
-  def t2fastercap(tri, net, z, top)
-    pts = tri.each_point_hull.collect do |pt|
-      (pt.x*1.dbu).to_s + " " + (pt.y*1.dbu).to_s + " " + z.to_s
+  def ds(cs, symbol, defs)
+    cs[symbol] = defs
+    if defs[:z_on]
+      defs[:z_bot] = cs[defs[:z_on]][:z_top]
     end
-    if top
-      pts = pts.reverse
+    if defs[:z_height]
+      defs[:z_top] = defs[:z_bot] + defs[:z_height]
+    else
+      defs[:z_height] = defs[:z_top] - defs[:z_bot]   
     end
-    "T " + net_name(net) + "  " + pts.join("  ")
   end
-
-  def e2fastercap(qe, net, zz1, zz2)
-    z1 = [zz1, zz2].min
-    z2 = [zz1, zz2].max
-    "Q " + net_name(net) + "  " + 
-           (qe.p1.x*1.dbu).to_s + " " + (qe.p1.y*1.dbu).to_s + " " + z1.to_s + " " + 
-           (qe.p1.x*1.dbu).to_s + " " + (qe.p1.y*1.dbu).to_s + " " + z2.to_s + " " + 
-           (qe.p2.x*1.dbu).to_s + " " + (qe.p2.y*1.dbu).to_s + " " + z2.to_s + " " + 
-           (qe.p2.x*1.dbu).to_s + " " + (qe.p2.y*1.dbu).to_s + " " + z1.to_s
-  end
-
-  debug_ly = RBA::Layout::new
-  debug_top = debug_ly.create_cell("TOP")
   
-  file_shapes = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_3Dshapes.txt")
-  File.open(file_shapes, "w") do |file|
-    for circuit in netlist.each_circuit() do
+  # describes the conductor stack
+  cond_stack = {}
+  
+  # should be included in device models:
+  #ds(cond_stack, :PTAP,  { :z_bot =&gt; -120.nm, :z_top   =&gt; 0.nm })
+  #ds(cond_stack, :NTAP,  { :z_bot =&gt; -120.nm, :z_top   =&gt; 0.nm })
+  #ds(cond_stack, :PSD,   { :z_bot =&gt; -120.nm, :z_top   =&gt; 0.nm })
+  #ds(cond_stack, :NSD,   { :z_bot =&gt; -120.nm, :z_top   =&gt; 0.nm })
+  ds(cond_stack, :POLY,  { :z_bot =&gt; 5.nm,    :z_height =&gt; 180.nm })
+  ds(cond_stack, :LICON, { :z_bot =&gt; 0.nm,    :z_top    =&gt; 615.nm })
+  ds(cond_stack, :LICON_ON_POLY, { :z_on  =&gt; :POLY,  :z_top    =&gt; 615.nm })
+  ds(cond_stack, :LI,    { :z_on  =&gt; :LICON,  :z_height =&gt; 100.nm })
+  ds(cond_stack, :MCON,  { :z_on  =&gt; :LI,     :z_height =&gt; 340.nm })
+  ds(cond_stack, :MET1,  { :z_on  =&gt; :MCON,   :z_height =&gt; 360.nm })
+  ds(cond_stack, :VIA1,  { :z_on  =&gt; :MET1,   :z_height =&gt; 270.nm })
+  ds(cond_stack, :MET2,  { :z_on  =&gt; :VIA1,   :z_height =&gt; 360.nm })
+  ds(cond_stack, :VIA2,  { :z_on  =&gt; :MET2,   :z_height =&gt; 420.nm })
+  ds(cond_stack, :MET3,  { :z_on  =&gt; :VIA2,   :z_height =&gt; 845.nm })
+  ds(cond_stack, :VIA3,  { :z_on  =&gt; :MET3,   :z_height =&gt; 390.nm })
+  ds(cond_stack, :MET4,  { :z_on  =&gt; :VIA3,   :z_height =&gt; 845.nm })
+  ds(cond_stack, :VIA4,  { :z_on  =&gt; :MET4,   :z_height =&gt; 505.nm })
+  ds(cond_stack, :MET5,  { :z_on  =&gt; :VIA4,   :z_height =&gt; 1.26   })
+
+  # default k is 3.9
+  fcm = FCModelBuilder::new(3.9, dbu, amax: 0.5, b: 0.5)
+
+  fcm.add_material("SPNIT", 7.5)
+  fcm.add_material("LINT", 7.3)
+  fcm.add_material("NILD2", 4.05)
+  fcm.add_material("NILD3", 4.5)
+  fcm.add_material("NILD4", 4.2)
+  fcm.add_material("NILD5", 4.1)
+  fcm.add_material("NILD6", 4.0)
+  fcm.add_material("TOPNIT", 7.5)
+  fcm.add_material("PI1", 2.94)
+  
+  # @@@ TODO: cannot have hierarchy as of now. COULD, if we 
+  # had a way to hierarchically identify the subcircuit and iterate
+  # over every one of them. But then patching back the nets will be
+  # a problem.
+  netlist.each_circuit_top_down do |circuit|
+  
+    circuit.each_net do |net|
     
-      file.puts("*\n* circuit.name : " + circuit.name + "\n* ------------\n")
+      nn = net.expanded_name()
       
-      for net in circuit.each_net() do
+      # outputs the shapes for this net to layers : poly, contacts, metals, vias :
+      shapes = {}
+      [ 
+        # :PTAP, :NTAP, :PSD, :NSD,  - should be included in device models
+        :POLY, :LICON, :LI, :MCON, 
+        :MET1, :VIA1, :MET2, :VIA2, :MET3, :VIA3, :MET4
+      ].each do |ln|
+        shapes[ln] = l2n_data.shapes_of_net(net, eval(ln.to_s).data, true)
+      end
       
-        below = RBA::Region::new
-        zlast = nil
+      shapes[:LICON_ON_POLY] = shapes[:LICON] &amp; shapes[:POLY]
+      shapes[:LICON] -= shapes[:POLY]
       
-        file.puts("*\n* net: " + net.expanded_name() + "\n")
-        
-        # outputs the shapes for this net to layers : poly, contacts, metals, vias :
-        [ 
-          [ 2001, POLY ],
-          [ 2002, LICON ],
-          [ 2003, LI ], 
-          [ 2004, MCON ], 
-          [ 2005, MET1 ],
-          [ 2006, VIA1 ],
-          [ 2007, MET2 ],
-          [ 2008, VIA2 ],
-          [ 2009, MET3 ],
-          [ 2010, VIA3 ],
-          [ 2011, MET4 ],
-          [ 2012, nil ] 
-        ].each do |n,l|
-
-          if l
-            z = l.z_bot
-            zz = l.z_top
-            file.puts("* layer: " + l.z_name + "\n")
-          else
-            z = zz = zlast
-          end
-          
-          zlast = zz
-          
-          net_shapes = l ? l2n_data.shapes_of_net(net, l.data, true) : RBA::Region::new
-          new_shapes = net_shapes - below
-          lost_shapes = below - net_shapes
-          below = net_shapes
-            
-          net_shapes = net_shapes.merged
-          new_shapes = new_shapes.delaunay(0.0, 0.5)
-          lost_shapes = lost_shapes.delaunay(0.0, 0.5)
-          
-          debug_top.shapes(debug_ly.layer(n, 0)).insert(net_shapes)
-          debug_top.shapes(debug_ly.layer(n, 1)).insert(lost_shapes)
-          debug_top.shapes(debug_ly.layer(n, 2)).insert(new_shapes)
-          
-          lost_shapes.each do |triangle|
-            # describe as triangles, the top surface of poly and metals layers
-            line = t2fastercap(triangle, net, z, true)
-            file.puts(line + "\n")
-          end # each quadrilater
-          
-          new_shapes.each do |triangle|
-            # describe as triangles, the bottom surface of poly and metals layers
-            line = t2fastercap(triangle, net, z, false)
-            file.puts(line + "\n")
-          end # each quadrilater
-          
-          net_shapes.edges.each do |qedge|
-            # describe as triangles, the border surface of poly, contacts, vias and metals layers
-            line = e2fastercap(qedge, net, z, zz)
-            file.puts(line + "\n")
-          end # for qedge
-          
-        end # each layer
-
-if false # @@@
-        subGND = SUB - NWELL - DIFF - TAP
-        z_top = 0.0
-        # outputs the shapes for this net to layers : Nwell and active :
-        {2001 =&gt; subGND, 2002 =&gt; NWELL, 2003 =&gt; DIFF, 2004 =&gt; TAP }.each do |n,l|
-          netShape = l2n_data.shapes_of_net(net, l.data, true).delaunay(0.0, 0.5)
-          if (l.z_name &amp;&amp; !l.is_empty?)
-            file.puts("* layer: " + l.z_name + "\n")
-          end # if
-          netShape.each do |triangle|
-            # describe as triangles, the top surface of poly and metals layers
-            # 2001 = ground when outside the NWELL, DIFF, TAP
-            line = t2fastercap(triangle, n == 2001 ? nil : net, z_top)
-            file.puts(line + "\n")
-          end # each quadrilater
-        end # each layer
-      end # for net
-end
+      shapes.each do |ln,s|
+        fcm.add_conductor(s, nn, z: cond_stack[ln][:z_bot], h: cond_stack[ln][:z_height])
+      end
+      
+    end # for net
     
-    end # for circuit
-  end # do file
+    break # @@@ no hierarchy as of now!
+    
+  end # for circuit
+    
+  # some global substrate below, not counting the device areas
+  # @@@ TODO: this is a rough approximation!
+  fcm.add_conductor(SUB - DIFF - TAP, "0", z: -430.nm, h: 100.nm)
+
+  # Add dielectrics
+
+if false # @@@ 
+  # SPNIT
+  poly_sized2 = POLY.sized(43.nm)
+  poly_sized1 = poly_sized2 - POLY.sized(6.nm)
+  fcm.add_dielectric(poly_sized1, "SPNIT", z: cond_stack[:POLY][:z_bot], h: cond_stack[:POLY][:z_height])
+  fcm.add_dielectric(poly_sized2, "SPNIT", z: cond_stack[:POLY][:z_top], h: 121.nm)
   
-  debug_ly.write("debug.gds")
+  # LINT
+  li_sized1 = LI.sized(75.nm)
+  fcm.add_dielectric(SUB, "LINT", z: cond_stack[:LI][:z_bot], h: 75.nm)
+  fcm.add_dielectric(li_sized1, "LINT", z: cond_stack[:LI][:z_bot], h: cond_stack[:LI][:z_height] + 75.nm)
   
-  file_passivation = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_3Dpassivation.txt")
-  File.open(file_passivation, "w") do |file|
-    file.puts("* Passivation shapes of " + source.cell_name + "\n*\n")
-    passivation_thickness = 300.nm
-    z_bot = MET4.z_bot + passivation_thickness
-    z_top = MET4.z_top + passivation_thickness
+  # NILD2
+  fcm.add_dielectric(SUB, "NILD2", z: cond_stack[:LI][:z_bot], h: cond_stack[:MCON][:z_top] - cond_stack[:LI][:z_bot])
+  
+  # NILD3
+  fcm.add_dielectric(SUB, "NILD3", z: cond_stack[:MET1][:z_bot], h: cond_stack[:VIA1][:z_top] - cond_stack[:MET1][:z_bot])
+  
+  # NILD4
+  fcm.add_dielectric(SUB, "NILD4", z: cond_stack[:MET2][:z_bot], h: cond_stack[:VIA2][:z_top] - cond_stack[:MET2][:z_bot])
+  
+  # NILD5
+  fcm.add_dielectric(SUB, "NILD5", z: cond_stack[:MET3][:z_bot], h: cond_stack[:VIA3][:z_top] - cond_stack[:MET3][:z_bot])
+  
+  # NILD6
+  fcm.add_dielectric(SUB, "NILD6", z: cond_stack[:MET4][:z_bot], h: cond_stack[:VIA4][:z_top] - cond_stack[:MET4][:z_bot])
+  
+  # TOPNIT
+  metal5_sized1 = SUB - MET5.sized(70.nm)
+  metal5_sized2 = MET5.sized(490.nm)
+  metal5_sized3 = metal5_sized1 &amp; metal5_sized2
+  fcm.add_dielectric(metal5_sized3, "TOPNIT", z: cond_stack[:MET5][:z_bot], h: 380.nm)
+  fcm.add_dielectric(metal5_sized2, "TOPNIT", z: cond_stack[:MET5][:z_bot], h: 1.35)
+  fcm.add_dielectric(metal5_sized2, "TOPNIT", z: cond_stack[:MET5][:z_bot] + 1.35, h: 540.nm)
+  
+  # PI1
+  fcm.add_dielectric(SUB, "PI1", z: cond_stack[:MET5][:z_bot], h: 6.39)
+end # @@@
 
-    TOPMetal = MET1   # to be chnged according to the process : used to defined the passivation shapes if not planarized
+  # write file  
+  gen = fcm.generate
+  
+  # for debugging
+  gen.dump_stl
 
-    TOPpassivation = TOPMetal.sized(passivation_thickness)
-    BOTpassivation = SUB - TOPpassivation
-    passivShapes = TOPpassivation.data.delaunay(0.0, 0.5)
-    passivShapes.each do |triangle|
-      # describe as triangles, the bottom surface of poly and metals layers
-      line = t2fastercap(triangle, "PASS", z_bot, false)
-      file.puts(line + "\n")
-    end # each quadrilater
-    passivShapes.each do |triangle|
-      # describe as triangles, the top surface of poly and metals layers
-      line = t2fastercap(triangle, "PASS", z_top, true)
-      file.puts(line + "\n")
-    end # each quadrilater
-
-    passivShapes = BOTpassivation.data.delaunay(0.0, 0.5)
-    passivShapes.each do |triangle|
-      # describe as triangles, the bottom surface of poly and metals layers
-      line = t2fastercap(triangle, "PASS", z_bot, false)
-      file.puts(line + "\n")
-    end # each quadrilater
-    passivShapes.each do |triangle|
-      # describe as triangles, the top surface of poly and metals layers
-      line = t2fastercap(triangle, "PASS", z_top, true)
-      file.puts(line + "\n")
-    end # each quadrilater
-  end # do file
-
-  file_FCinput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapInput.lst")
-  File.open(file_FCinput, "w") do |file|
-    file.puts("0 Title : Faster shapes of  " + source.cell_name + "\n*\n")
-    file.puts("* conductive shapes of the cell :\n")
-    file.puts("C " + source.cell_name + "_3Dshapes.txt  4.2 0.0 0.0 0.0\n")
-    file.puts("**  4.2 = dielectric constant of SiO2 = outer dielectric of the Metals\n*\n")
-    file.puts("* passivation of the cell :\n")
-    #@@@file.puts("D  " + source.cell_name + "_3Dpassivation.txt  1.0 4.2 0.0 0.0 0.0\n")
-  end # do file
-
+  # write fastcap file
+  file_FCinput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapInput")
+  gen.write_fastcap(file_FCinput)
+  
+if false
+  
   # now launch Fastercap !
-  system("FasterCap -a0.01 -b " + file_FCinput + " &gt;" + File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapOutput.txt"))
+  system("FasterCap -a0.01 -b " + file_FCinput + ".lst &gt;" + File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapOutput.txt"))
   
   dimension = 0
   j = 0
@@ -665,6 +550,8 @@ end
     c.set_parameter("C", capii)
 
   end # for j
+
+end # @@@
 
 end # if FASTERCAP
 
