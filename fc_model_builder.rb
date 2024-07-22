@@ -225,24 +225,26 @@ class FCModelGenerator
 
         # compute merged events
         @current[mk] ||= []
+        current_before = @current[mk][0] ? @current[mk][0].dup : RBA::Region::new
         lin, lout, current = _merge_events(@current[mk], @layers_in[mk], @layers_out[mk])
         @logger && @logger.debug("Merged events & status for '#{mk}':")
         @logger && @logger.debug("  in = #{lin.to_s}")
         @logger && @logger.debug("  out = #{lout.to_s}")
         @logger && @logger.debug("  state = #{current.to_s}")
 
+        @state[mk] ||= RBA::Region::new
+        
         # legalize in and out events
         lin_org = lin.dup
         lout_org = lout.dup
-        lout -= all
+        lout &= @state[mk]
         lin -= all
         lout += current & all_in
-        lin += current & all_out
+        lin += current_before & all_out
         lin -= lout_org
         lout -= lin_org
 
         # tracks the legalized horizontal cuts
-        @state[mk] ||= RBA::Region::new
         @state[mk] += lin
         @state[mk] -= lout
 
