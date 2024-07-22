@@ -535,12 +535,12 @@ if FASTERCAP &amp;&amp; compare
         n1 = nets[i]
         n2 = nets[j]
         
-        cap = -capex_mat[i][j]
-        if cap &gt;= cap_thr
+        cvalue = -capex_mat[i][j]
+        if cvalue &gt;= cap_thr
           c = top_circuit.create_device(cap, "Cext" + i.to_s + j.to_s)
           c.connect_terminal("A", n1)
           c.connect_terminal("B", n2)
-          c.set_parameter("C", cap)
+          c.set_parameter("C", cvalue)
         end
         
       else
