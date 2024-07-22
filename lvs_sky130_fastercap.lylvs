@@ -405,7 +405,6 @@ if FASTERCAP &amp;&amp; compare
 
   # Add dielectrics
 
-if false # @@@ 
   # SPNIT
   poly_sized2 = POLY.sized(43.nm)
   poly_sized1 = poly_sized2 - POLY.sized(6.nm)
@@ -417,32 +416,35 @@ if false # @@@
   fcm.add_dielectric(SUB, "LINT", z: cond_stack[:LI][:z_bot], h: 75.nm)
   fcm.add_dielectric(li_sized1, "LINT", z: cond_stack[:LI][:z_bot], h: cond_stack[:LI][:z_height] + 75.nm)
   
-  # NILD2
-  fcm.add_dielectric(SUB, "NILD2", z: cond_stack[:LI][:z_bot], h: cond_stack[:MCON][:z_top] - cond_stack[:LI][:z_bot])
+  if false # @@@ Too much for now
   
-  # NILD3
-  fcm.add_dielectric(SUB, "NILD3", z: cond_stack[:MET1][:z_bot], h: cond_stack[:VIA1][:z_top] - cond_stack[:MET1][:z_bot])
+    # NILD2
+    fcm.add_dielectric(SUB, "NILD2", z: cond_stack[:LI][:z_bot], h: cond_stack[:MCON][:z_top] - cond_stack[:LI][:z_bot])
+    
+    # NILD3
+    fcm.add_dielectric(SUB, "NILD3", z: cond_stack[:MET1][:z_bot], h: cond_stack[:VIA1][:z_top] - cond_stack[:MET1][:z_bot])
   
-  # NILD4
-  fcm.add_dielectric(SUB, "NILD4", z: cond_stack[:MET2][:z_bot], h: cond_stack[:VIA2][:z_top] - cond_stack[:MET2][:z_bot])
+    # NILD4
+    fcm.add_dielectric(SUB, "NILD4", z: cond_stack[:MET2][:z_bot], h: cond_stack[:VIA2][:z_top] - cond_stack[:MET2][:z_bot])
+    
+    # NILD5
+    fcm.add_dielectric(SUB, "NILD5", z: cond_stack[:MET3][:z_bot], h: cond_stack[:VIA3][:z_top] - cond_stack[:MET3][:z_bot])
+    
+    # NILD6
+    fcm.add_dielectric(SUB, "NILD6", z: cond_stack[:MET4][:z_bot], h: cond_stack[:VIA4][:z_top] - cond_stack[:MET4][:z_bot])
+    
+    # TOPNIT
+    metal5_sized1 = SUB - MET5.sized(70.nm)
+    metal5_sized2 = MET5.sized(490.nm)
+    metal5_sized3 = metal5_sized1 &amp; metal5_sized2
+    fcm.add_dielectric(metal5_sized3, "TOPNIT", z: cond_stack[:MET5][:z_bot], h: 380.nm)
+    fcm.add_dielectric(metal5_sized2, "TOPNIT", z: cond_stack[:MET5][:z_bot], h: 1.35)
+    fcm.add_dielectric(metal5_sized2, "TOPNIT", z: cond_stack[:MET5][:z_bot] + 1.35, h: 540.nm)
+    
+    # PI1
+    fcm.add_dielectric(SUB, "PI1", z: cond_stack[:MET5][:z_bot], h: 6.39)
   
-  # NILD5
-  fcm.add_dielectric(SUB, "NILD5", z: cond_stack[:MET3][:z_bot], h: cond_stack[:VIA3][:z_top] - cond_stack[:MET3][:z_bot])
-  
-  # NILD6
-  fcm.add_dielectric(SUB, "NILD6", z: cond_stack[:MET4][:z_bot], h: cond_stack[:VIA4][:z_top] - cond_stack[:MET4][:z_bot])
-  
-  # TOPNIT
-  metal5_sized1 = SUB - MET5.sized(70.nm)
-  metal5_sized2 = MET5.sized(490.nm)
-  metal5_sized3 = metal5_sized1 &amp; metal5_sized2
-  fcm.add_dielectric(metal5_sized3, "TOPNIT", z: cond_stack[:MET5][:z_bot], h: 380.nm)
-  fcm.add_dielectric(metal5_sized2, "TOPNIT", z: cond_stack[:MET5][:z_bot], h: 1.35)
-  fcm.add_dielectric(metal5_sized2, "TOPNIT", z: cond_stack[:MET5][:z_bot] + 1.35, h: 540.nm)
-  
-  # PI1
-  fcm.add_dielectric(SUB, "PI1", z: cond_stack[:MET5][:z_bot], h: 6.39)
-end # @@@
+  end
 
   # write file  
   gen = fcm.generate
@@ -454,10 +456,8 @@ end # @@@
   file_FCinput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapInput")
   gen.write_fastcap(file_FCinput)
   
-if false
-  
   # now launch Fastercap !
-  system("FasterCap -a0.01 -b " + file_FCinput + ".lst &gt;" + File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapOutput.txt"))
+  system("FasterCap -a0.05 -b " + file_FCinput + ".lst &gt;" + File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapOutput.txt"))
   
   dimension = 0
   j = 0
@@ -501,6 +501,10 @@ if false
   cap.description = "Extracted by PEX"
   netlist.add(cap)
 
+  # create a ground net
+  nets = []
+  nets[0] = top_circuit.create_net("0")
+  
   # build a name to net table  
   name2net = {}
   top_circuit.each_net do |n|
@@ -508,7 +512,6 @@ if false
   end
   
   # find nets for the matrix axes
-  nets = []
   (1..dimension).each do |i|
     nn = capname[i].split("_")[1]
     n = name2net[nn]
@@ -516,8 +519,6 @@ if false
     nets[i] = n
   end
   
-  nets[0] = top_circuit.create_net("0")
- 
   # insert the caps
   (1..dimension).each do |j|
   
@@ -550,8 +551,6 @@ if false
     c.set_parameter("C", capii)
 
   end # for j
-
-end # @@@
 
 end # if FASTERCAP
 
