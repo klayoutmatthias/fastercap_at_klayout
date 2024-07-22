@@ -513,11 +513,15 @@ if FASTERCAP &amp;&amp; compare
   
   # find nets for the matrix axes
   (1..dimension).each do |i|
-    nn = capname[i].split("_")[1]
+    capname[i] =~ /^g\d+_(.*)/
+    nn = $1
     n = name2net[nn]
     n || raise("No net found with name #{nn}")
     nets[i] = n
   end
+  
+  # cap threshold
+  cap_thr = 0.05e-15
   
   # insert the caps
   (1..dimension).each do |j|
@@ -530,10 +534,14 @@ if FASTERCAP &amp;&amp; compare
       
         n1 = nets[i]
         n2 = nets[j]
-        c = top_circuit.create_device(cap, "Cext" + i.to_s + j.to_s)
-        c.connect_terminal("A", n1)
-        c.connect_terminal("B", n2)
-        c.set_parameter("C", -capex_mat[i][j])
+        
+        cap = -capex_mat[i][j]
+        if cap &gt;= cap_thr
+          c = top_circuit.create_device(cap, "Cext" + i.to_s + j.to_s)
+          c.connect_terminal("A", n1)
+          c.connect_terminal("B", n2)
+          c.set_parameter("C", cap)
+        end
         
       else
       
@@ -545,10 +553,13 @@ if FASTERCAP &amp;&amp; compare
     
     n1 = nets[j]
     n2 = nets[0]
-    c = top_circuit.create_device(cap, "Cext" + j.to_s + j.to_s)
-    c.connect_terminal("A", n1)
-    c.connect_terminal("B", n2)
-    c.set_parameter("C", capii)
+    
+    if capii &gt;= cap_thr
+      c = top_circuit.create_device(cap, "Cext" + j.to_s + j.to_s)
+      c.connect_terminal("A", n1)
+      c.connect_terminal("B", n2)
+      c.set_parameter("C", capii)
+    end
 
   end # for j
 
