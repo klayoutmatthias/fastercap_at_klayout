@@ -33,7 +33,7 @@ net2.shapes(m1).insert(RBA::Box::new(-1000, 0, -600, 400))
 net2.shapes(v1).insert(RBA::Box::new(-900, 100, -700, 300))
 net2.shapes(m2).insert(RBA::Box::new(-1000, 0, -600, 400))
 
-fcm = FCModelBuilder::new(3.5, ly.dbu, amax: 0.5, b: 0.5, logger: logger)
+fcm = FCModelBuilder::new(3.5, ly.dbu, amax: 0.5, b: 1.0, logger: logger)
 
 fcm.add_material("nit", 4.5)
 

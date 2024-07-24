@@ -17,6 +17,10 @@
  <dsl-interpreter-name>lvs-dsl-xml</dsl-interpreter-name>
  <text>
 require_relative "fc_model_builder"
+require "logger"
+
+logger = Logger.new(STDOUT)
+logger.level = Logger::INFO
 
 #
 # Extraction for SKY130
@@ -354,7 +358,7 @@ if FASTERCAP &amp;&amp; compare
   ds(cond_stack, :MET5,  { :z_on  =&gt; :VIA4,   :z_height =&gt; 1.26   })
 
   # default k is 3.9
-  fcm = FCModelBuilder::new(3.9, dbu, amax: 0.5, b: 0.5)
+  fcm = FCModelBuilder::new(3.9, dbu, amax: 0.5, b: 0.5, :logger =&gt; logger)
 
   fcm.add_material("SPNIT", 7.5)
   fcm.add_material("LINT", 7.3)
@@ -451,6 +455,12 @@ if FASTERCAP &amp;&amp; compare
   
   # for debugging
   gen.dump_stl
+  
+  # geometry self-check
+  # -&gt; this takes a while, so uncomment if desired
+  # if gen.check &gt; 0
+  #   raise "FasterCap geometry builder returned errors!"
+  # end
 
   # write fastcap file
   file_FCinput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapInput")

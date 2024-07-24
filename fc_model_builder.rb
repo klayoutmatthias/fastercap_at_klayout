@@ -731,12 +731,176 @@ class FCModelGenerator
 
   end
 
-  def check
+  def _check_tris(msg, tris)
 
-    if @amax > 1e-6 || @b > 1e-6
-      @logger && @logger.warn("Cannot perform checking with confined Delaunay tesselation")
-      return
+    errors = 0
+    
+    edge_hash = {}
+    edges = _normed_edges(tris)
+
+    edges.each do |e|
+      if edge_hash[e]
+        @logger && @logger.error(msg + ": duplicate edge #{_edge2s(e)}")
+        errors += 1
+      else
+        edge_hash[e] = true
+      end
     end
+    
+    _split_edges(edge_hash)
+
+    edge_hash.keys.each do |e|
+      if !edge_hash[e.reverse]
+        @logger && @logger.error(msg + ": edge #{_edge2s(e)} not connected with reverse edge (open surface)")
+        errors += 1
+      end
+    end
+    
+    errors
+  
+  end
+  
+  def _normed_edges(tris)
+
+    edges = []
+
+    tris.each do |t|
+      3.times do |i|
+        p1 = t[i]
+        p2 = t[(i + 1) % 3]
+        p1 = p1.collect { |c| (c / @dbu + 0.5).floor }
+        p2 = p2.collect { |c| (c / @dbu + 0.5).floor }
+        edges << [ p1, p2 ]
+      end
+    end
+    
+    edges
+
+  end
+  
+  def _vector_of_edge(e)
+    3.times.collect { |i| e[1][i] - e[0][i] }
+  end
+  
+  def _is_antiparallel(a, b)
+    vp = 3.times.collect do |i|
+      i1 = (i + 1) % 3
+      i2 = (i + 2) % 3
+      a[i1] * b[i2] - a[i2] * b[i1]
+    end
+    if _sq_length(vp).abs > 0.5 # we got normalized!
+      return false
+    end
+    sp = 3.times.collect do |i|
+      a[i] * b[i]
+    end.inject(:+)
+    return sp < 0
+  end
+  
+  def _sq_length(e)
+    e.collect { |c| c*c }.inject(:+)
+  end
+  
+  # @brief Splits edges into pieces to match an antiparallel sequence of multiple colinear edges
+  #
+  # Such cases arise at the connection line between two sub-surfaces which are triangulated
+  # separately, because their triangles are not neccessarily aligned at the corners.
+  
+  def _split_edges(edge_hash)
+
+    while(true)
+    
+      subst = {}
+    
+      edges_by_p2 = {}
+      edge_hash.keys.each do |e|
+        edges_by_p2[e[1]] ||= []
+        edges_by_p2[e[1]] << e
+      end
+      
+      edge_hash.keys.each do |e|
+        ee = edges_by_p2[e[0]] || []
+        (edges_by_p2[e[0]] || []).each do |ee|
+          if _is_antiparallel(_vector_of_edge(e), _vector_of_edge(ee)) && _sq_length(_vector_of_edge(ee)) < _sq_length(_vector_of_edge(e)) - 0.5
+            # There is a shorter edge antiparallel -> this means we need to insert a split point into e
+            subst[e] ||= []
+            subst[e] += [ [ e[0], ee[0] ], [ ee[0], e[1] ] ]
+          end
+        end
+      end
+      
+      edges_by_p1 = {}
+      edge_hash.keys.each do |e|
+        edges_by_p1[e[0]] ||= []
+        edges_by_p1[e[0]] << e
+      end
+      
+      edge_hash.keys.each do |e|
+        ee = edges_by_p1[e[1]] || []
+        (edges_by_p1[e[1]] || []).each do |ee|
+          if _is_antiparallel(_vector_of_edge(e), _vector_of_edge(ee)) && _sq_length(_vector_of_edge(ee)) < _sq_length(_vector_of_edge(e)) - 0.5
+            # There is a shorter edge antiparallel -> this means we need to insert a split point into e
+            subst[e] ||= []
+            subst[e] += [ [ e[0], ee[1] ], [ ee[1], e[1] ] ]
+          end
+        end
+      end
+      
+      if subst.empty?
+        break
+      end
+      
+      subst.each do |e,with|
+        edge_hash.delete(e)
+        with.each do |w|
+          edge_hash[w] = true
+        end
+      end
+    
+    end
+  
+  end
+
+  def _collect_diel_tris(mn)
+
+    tris = []
+
+    @diel_data.each do |k,v|
+      outside, inside = k
+      if outside == mn
+        tris += v
+      elsif inside == mn
+        tris += v.collect { |t| t.reverse }
+      end
+    end
+        
+    @cond_data.each do |k,v|
+      nn, outside = k
+      if outside == mn
+        tris += v
+      end
+    end
+        
+    return tris
+
+  end
+
+  def _collect_cond_tris(net_name)
+
+    tris = []
+
+    @cond_data.each do |k,v|
+      nn, outside = k
+      if nn == net_name
+        tris += v.collect { |t| t.reverse }
+      end
+    end
+        
+    return tris
+
+  end
+
+  def check
 
     @logger && @logger.info("Checking ..")
     errors = 0
@@ -745,25 +909,8 @@ class FCModelGenerator
 
       tris = _collect_diel_tris(mn)
       @logger && @logger.info("Material #{mn} -> #{tris.size} triangles")
-
-      edge_hash = {}
-      edges = _normed_edges(tris)
-
-      edges.each do |e|
-        if edge_hash[e]
-          @logger && @logger.error("Material '#{mn}': duplicate edge #{_edge2s(e)}")
-          errors += 1
-        else
-          edge_hash[e] = true
-        end
-      end 
-
-      edge_hash.keys.each do |e|
-        if !edge_hash[e.reverse]
-          @logger && @logger.error("Material '#{mn}': edge #{_edge2s(e)} not connected with reverse edge (open surface)")
-          errors += 1
-        end
-      end
+      
+      errors += _check_tris("Material '#{mn}'", tris)
 
     end
 
@@ -772,24 +919,7 @@ class FCModelGenerator
       tris = _collect_cond_tris(nn)
       @logger && @logger.info("Net #{nn} -> #{tris.size} triangles")
 
-      edge_hash = {}
-      edges = _normed_edges(tris)
-
-      edges.each do |e|
-        if edge_hash[e]
-          @logger && @logger.error("Net '#{nn}': duplicate edge #{_edge2s(e)}")
-          errors += 1
-        else
-          edge_hash[e] = true
-        end
-      end 
-
-      edge_hash.keys.each do |e|
-        if !edge_hash[e.reverse]
-          @logger && @logger.error("Net '#{nn}': edge #{_edge2s(e)} not connected with reverse edge (open surface)")
-          errors += 1
-        end
-      end
+      errors += _check_tris("Net '#{nn}'", tris)
 
     end
 
@@ -881,63 +1011,6 @@ class FCModelGenerator
 
   def _edge2s(e)
     "(%.12g,%.12g,%.12g)-(%.12g,%.12g,%.12g)" % (e[0].collect { |c| c * @dbu } + e[1].collect { |c| c * @dbu })
-  end
-
-  def _normed_edges(tris)
-
-    edges = []
-
-    tris.each do |t|
-      3.times do |i|
-        p1 = t[i]
-        p2 = t[(i + 1) % 3]
-        p1 = p1.collect { |c| (c / @dbu + 0.5).floor }
-        p2 = p2.collect { |c| (c / @dbu + 0.5).floor }
-        edges << [ p1, p2 ]
-      end
-    end
-
-    edges
-
-  end
-
-  def _collect_diel_tris(mn)
-
-    tris = []
-
-    @diel_data.each do |k,v|
-      outside, inside = k
-      if outside == mn
-        tris += v
-      elsif inside == mn
-        tris += v.collect { |t| t.reverse }
-      end
-    end
-        
-    @cond_data.each do |k,v|
-      nn, outside = k
-      if outside == mn
-        tris += v
-      end
-    end
-        
-    return tris
-
-  end
-
-  def _collect_cond_tris(net_name)
-
-    tris = []
-
-    @cond_data.each do |k,v|
-      nn, outside = k
-      if nn == net_name
-        tris += v.collect { |t| t.reverse }
-      end
-    end
-        
-    return tris
-
   end
 
 end
