@@ -400,8 +400,8 @@ class FCModelGenerator
             loutside = @state["-" + mno]
             if loutside
               loutside = loutside.edges
-              d = loutside & linside
               if o > i
+                d = loutside & linside
                 d.each do |e|
                   # NOTE: we need to swap points as we started from "outside"
                   generate_vdiel(mno, mni, e.swapped_points)
