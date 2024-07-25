@@ -807,17 +807,20 @@ class FCModelGenerator
   # separately, because their triangles are not neccessarily aligned at the corners.
   
   def _split_edges(edge_hash)
-
+  
+    edges_by_p2 = {}
+    edges_by_p1 = {}
+    edge_hash.keys.each do |e|
+      edges_by_p2[e[1]] ||= []
+      edges_by_p2[e[1]] << e
+      edges_by_p1[e[0]] ||= []
+      edges_by_p1[e[0]] << e
+    end
+    
     while(true)
     
       subst = {}
     
-      edges_by_p2 = {}
-      edge_hash.keys.each do |e|
-        edges_by_p2[e[1]] ||= []
-        edges_by_p2[e[1]] << e
-      end
-      
       edge_hash.keys.each do |e|
         ee = edges_by_p2[e[0]] || []
         (edges_by_p2[e[0]] || []).each do |ee|
@@ -827,12 +830,6 @@ class FCModelGenerator
             subst[e] += [ [ e[0], ee[0] ], [ ee[0], e[1] ] ]
           end
         end
-      end
-      
-      edges_by_p1 = {}
-      edge_hash.keys.each do |e|
-        edges_by_p1[e[0]] ||= []
-        edges_by_p1[e[0]] << e
       end
       
       edge_hash.keys.each do |e|
@@ -851,9 +848,13 @@ class FCModelGenerator
       end
       
       subst.each do |e,with|
+        edges_by_p1[e[0]].delete(e)
+        edges_by_p2[e[1]].delete(e)
         edge_hash.delete(e)
         with.each do |w|
           edge_hash[w] = true
+          (edges_by_p1[w[0]] ||= []) << w
+          (edges_by_p2[w[1]] ||= []) << w
         end
       end
     

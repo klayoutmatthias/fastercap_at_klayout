@@ -458,9 +458,9 @@ if FASTERCAP &amp;&amp; compare
   
   # geometry self-check
   # -&gt; this takes a while, so uncomment if desired
-  # if gen.check &gt; 0
-  #   raise "FasterCap geometry builder returned errors!"
-  # end
+  if gen.check &gt; 0
+    raise "FasterCap geometry builder returned errors!"
+  end
 
   # write fastcap file
   file_FCinput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapInput")
