@@ -387,20 +387,25 @@ class FCModelGenerator
     end
     all_cond = all_cond.edges
     
-    @materials.keys.each do |mni|
+    mat_keys = @materials.keys
+    mat_keys.size.times do |i|
+      mni = mat_keys[i]
       linside = @state["-" + mni]
       if linside
         linside = linside.edges
         linside -= all_cond  # handled with the conductor
-        @materials.keys.each do |mno|
-          if mno != mni
+        mat_keys.size.times do |o|
+          if i != o
+            mno = mat_keys[o]
             loutside = @state["-" + mno]
             if loutside
               loutside = loutside.edges
               d = loutside & linside
-              d.each do |e|
-                # NOTE: we need to swap points as we started from "outside"
-                generate_vdiel(mno, mni, e.swapped_points)
+              if o > i
+                d.each do |e|
+                  # NOTE: we need to swap points as we started from "outside"
+                  generate_vdiel(mno, mni, e.swapped_points)
+                end
               end
               linside -= loutside
             end

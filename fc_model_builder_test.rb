@@ -36,6 +36,7 @@ net2.shapes(m2).insert(RBA::Box::new(-1000, 0, -600, 400))
 fcm = FCModelBuilder::new(3.5, ly.dbu, amax: 0.5, b: 1.0, logger: logger)
 
 fcm.add_material("nit", 4.5)
+fcm.add_material("nit2", 7)
 
 z = 0.0
 h = 0.5
@@ -48,6 +49,8 @@ net_cells.each do |cell|
   fcm.add_conductor(r, nn, z: z, h: h)
   rnit = r.sized(100)
   fcm.add_dielectric(rnit, "nit", z: z, h: hnit + h)
+  rnit2 = r.sized(200)
+  fcm.add_dielectric(rnit2, "nit2", z: z, h: hnit + h)
 end
 
 z += h
