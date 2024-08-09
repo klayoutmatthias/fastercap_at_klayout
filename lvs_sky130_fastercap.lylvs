@@ -495,12 +495,12 @@ if FASTERCAP &amp;&amp; compare
 
       if (line[0..8] == "Dimension")
         dimension = line.split(' ')[3].to_i
-        print("cap_matrix dimension = " + dimension.to_s + "\n")
         capex_mat = Array.new(dimension+1){Array.new(dimension+1)}
         j = 1
       end # if split
     end # each line
   end # do file
+  print("cap_matrix dimension = " + dimension.to_s + " : " + (dimension*(dimension+1)/2).to_s + " capacitors extracted\n")
 
   # embed the capacitances into the netlist
   top_circuit = netlist.circuit_by_name(source.cell_name)
@@ -532,6 +532,8 @@ if FASTERCAP &amp;&amp; compare
   
   # cap threshold
   cap_thr = 0.05e-15
+  # nbr of negative cap
+  negcap = 0
   
   # insert the caps
   (1..dimension).each do |j|
@@ -546,6 +548,10 @@ if FASTERCAP &amp;&amp; compare
         n2 = nets[j]
         
         cvalue = -capex_mat[i][j]
+        if (cvalue &lt; 0)
+          negcap = negcap +1;
+        end # if cvalue
+        
         if cvalue &gt;= cap_thr
           c = top_circuit.create_device(cap, "Cext" + i.to_s + j.to_s)
           c.connect_terminal("A", n1)
@@ -569,9 +575,12 @@ if FASTERCAP &amp;&amp; compare
       c.connect_terminal("A", n1)
       c.connect_terminal("B", n2)
       c.set_parameter("C", capii)
-    end
+    end # if capii
 
   end # for j
+  if (negcap&gt;0)
+    print(negcap.to_s + " negative capacitors\n")
+  end # if negcap
 
 end # if FASTERCAP
 
