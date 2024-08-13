@@ -458,9 +458,9 @@ if FASTERCAP &amp;&amp; compare
   
   # geometry self-check
   # -&gt; this takes a while, so uncomment if desired
-  if gen.check &gt; 0
-    raise "FasterCap geometry builder returned errors!"
-  end
+  #if gen.check &gt; 0
+  #  raise "FasterCap geometry builder returned errors!"
+  #end
 
   # write fastcap file
   file_FCinput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapInput")
@@ -549,7 +549,7 @@ if FASTERCAP &amp;&amp; compare
         
         cvalue = -capex_mat[i][j]
         if (cvalue &lt; 0)
-          negcap = negcap +1;
+          negcap = negcap + 1;
         end # if cvalue
         
         if cvalue &gt;= cap_thr
@@ -559,11 +559,9 @@ if FASTERCAP &amp;&amp; compare
           c.set_parameter("C", cvalue)
         end
         
-      else
-      
-        capii = capii + capex_mat[i][j]
-        
-      end # if i=j
+      end # if i &gt; j
+
+      capii = capii + capex_mat[i][j]
       
     end # for i
     
