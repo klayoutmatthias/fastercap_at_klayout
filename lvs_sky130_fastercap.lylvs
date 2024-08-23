@@ -27,6 +27,15 @@ logger.level = Logger::INFO
 #
 ############################
 
+# Global Variables
+#
+#   $input            Layout file to use for input - take loaded one by default
+#   $report           Name of LVS report file - default is "lvs_report.lvsdb"
+#   $schematic        Name of schematic file - default is "sky130hs_lib.cdl"
+#   $target_netlist   Name of target netlist file with extracted C's - default is derived from layout file name
+#   $no_simplify      Set to true to skip netlist simplify step (good for metal-only circuits)
+#   $no_lvs           Do not run LVS - extraction is still possible
+
 tstart = Time.now
 FASTERCAP = true
 
@@ -243,7 +252,9 @@ align
 #netlist.combine_devices
 #netlist.purge
 #netlist.purge_nets
-netlist.simplify
+if !$no_simplify
+  netlist.simplify
+end
 schematic.simplify
 
 # Tolerances for the devices extracted parameters
@@ -302,9 +313,12 @@ equivalent_pins("*XNOR2_2", "A", "B")
 #max_res(1000000)
 #min_caps(1e-15)
 
-if ! compare 
+if $no_lvs
+  # Do not run LVS - still extraction can be done.
+elsif ! compare 
   #raise "ERROR : Netlists don't match"
   puts "ERROR : Netlists don't match"
+  FASTERCAP = false
 else
   puts "INFO : Congratulations! Netlists match."
 end
@@ -312,7 +326,7 @@ end
 
 ##########  PARASITIC CAPACITORS EXTRACTION based on FASTERCAP
 
-if FASTERCAP &amp;&amp; compare
+if FASTERCAP
 
   def net_name(net)
     if net.is_a?(String)
