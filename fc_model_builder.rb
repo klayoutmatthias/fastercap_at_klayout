@@ -667,22 +667,15 @@ class FCModelGenerator
       fn = prefix + "_" + file_num.to_s + ".geo"
       _write_fastcap_geo(file_num, fn, data, nil)
 
-      # compute one reference point "outside"
-      t0 = data[0]
-      v1 = 3.times.collect { |i| t0[1][i] - t0[0][i] }
-      v2 = 3.times.collect { |i| t0[2][i] - t0[0][i] }
-      vp = [ v1[1] * v2[2] - v1[2] * v2[1], -v1[0] * v2[2] + v1[2] * v2[0], v1[0] * v2[1] - v1[1] * v2[0] ]
-      vp_abs = Math::sqrt(vp[0] * vp[0] + vp[1] * vp[1] + vp[2] * vp[2])
-      rp = 3.times.collect { |i| t0[0][i] + vp[i] / vp_abs }
-      rp_s = rp.collect { |c| "%.12g" % c }.join(" ")
-
-      lst_file << "D #{fn}  #{'%.12g' % k_outside}  #{'%.12g' % k_inside}  0 0 0  #{rp_s}"
+      lst_file << "D #{fn}  #{'%.12g' % k_outside}  #{'%.12g' % k_inside}  0 0 0"
 
     end
 
-    first_cond = true
+    prev_net = nil
+    prev_cline = nil
+    net_num = 0
 
-    @cond_data.keys.each do |k|
+    @cond_data.keys.sort { |a,b| a[0] <=> b[0] }.each do |k|
 
       data = @cond_data[k]
 
@@ -690,20 +683,28 @@ class FCModelGenerator
         next
       end
 
-      file_num += 1
-
       nn, outside = k
+
+      if prev_net == nn
+        lst_file[prev_cline] += "  +"
+      else
+        net_num += 1
+      end
+
+      file_num += 1
 
       k_outside = outside ? @materials[outside] : @k_void
 
       lst_file << "* Conductor interface: outside=#{outside || '(void)'}, net=#{nn}"
 
       fn = prefix + "_" + file_num.to_s + ".geo"
-      _write_fastcap_geo(file_num, fn, data, nn)
+      _write_fastcap_geo(net_num, fn, data, nn)
 
-      lst_file << "C #{fn}  #{'%.12g' % k_outside}  0 0 0  +"
+      cline = "C #{fn}  #{'%.12g' % k_outside}  0 0 0"
+      prev_cline = lst_file.size
+      lst_file << cline
 
-      first_cond = false
+      prev_net = nn
 
     end
 
@@ -721,11 +722,24 @@ class FCModelGenerator
     File.open(fn, "w") do |file|
 
       data.each do |t|
+
         file.write("T #{num}")
+
         t.each do |p|
           file.write("  " + p.collect { |c| '%.12g' % c }.join(" "))
         end
+
+        # compute a reference point in the "outside"
+        dx1, dy1, dz1 = 3.times.collect { |i| t[1][i] - t[0][i] }
+        dx2, dy2, dz2 = 3.times.collect { |i| t[2][i] - t[0][i] }
+        n = [ dy1 * dz2 - dy2 * dz1, -(dx1 * dz2 - dx2 * dz1), dx1 * dy2 - dx2 * dy1 ]
+        n = 3.times.collect { |i| n[i] + t[0][i] }
+
+        # write this reference point
+        file.write("  " + n.collect { |c| '%.12g' % c }.join(" "))
+
         file.write("\n")
+
       end
 
       if cond_name
