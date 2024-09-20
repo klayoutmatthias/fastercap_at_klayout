@@ -1,0 +1,7 @@
+* Extracted by KLayout on : 20/09/2024 21:49
+
+.SUBCKT TOP
+CCext21 \$2 \$1 1.3389e-14 PEX_CAP
+CCext11 \$1 0 5.851e-16 PEX_CAP
+CCext22 \$2 0 3.881e-16 PEX_CAP
+.ENDS TOP

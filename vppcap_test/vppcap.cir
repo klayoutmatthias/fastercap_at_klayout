@@ -1,0 +1,5 @@
+
+.subckt TOP
+C1 A B 1f
+.ends
+

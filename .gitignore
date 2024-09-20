@@ -1,0 +1,7 @@
+*.geo
+*.lst
+*_extracted.cir
+*.stl
+*_fastercapOutput.txt
+*.swp
+*.swo
