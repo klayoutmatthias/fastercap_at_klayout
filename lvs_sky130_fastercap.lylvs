@@ -37,7 +37,7 @@ logger.level = Logger::INFO
 #   $no_lvs           Do not run LVS - extraction is still possible
 
 tstart = Time.now
-FASTERCAP = true
+fastercap = true
 
 # optionnal for a batch launch :   klayout -b -rd input=my_layout.gds -rd report=my_report.lyrdb -rd schematic=reference_netlist.cir -rd target_netlist=extracted_netlist.cir -r sky130.lvs
 if $input
@@ -318,15 +318,15 @@ if $no_lvs
 elsif ! compare 
   #raise "ERROR : Netlists don't match"
   puts "ERROR : Netlists don't match"
-  FASTERCAP = false
+  fastercap = false
 else
   puts "INFO : Congratulations! Netlists match."
 end
 
 
-##########  PARASITIC CAPACITORS EXTRACTION based on FASTERCAP
+##########  PARASITIC CAPACITORS EXTRACTION based on FasterCap
 
-if FASTERCAP
+if fastercap
 
   def net_name(net)
     if net.is_a?(String)
@@ -473,23 +473,27 @@ if FASTERCAP
   # geometry self-check
   # -&gt; this takes a while, so uncomment if desired
   #if gen.check &gt; 0
-  #  raise "FasterCap geometry builder returned errors!"
+  #  raise "fastercap geometry builder returned errors!"
   #end
 
   # write fastcap file
-  file_FCinput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapInput")
+  file_FCinput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_fastercapInput")
   gen.write_fastcap(file_FCinput)
   
-  # now launch Fastercap !
-  system("FasterCap -a0.05 -b " + file_FCinput + ".lst &gt;" + File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapOutput.txt"))
+  # now launch fastercap !
+  cmd = $fastercap || "FasterCap"
+  cmd += " -a0.05 -b " + file_FCinput + ".lst &gt;" + File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_fastercapOutput.txt")
+  if !system(cmd)
+    raise Exception::new("Unable to run FasterCap using command line:\n#{cmd}")
+  end
   
   dimension = 0
   j = 0
   capex_mat = Array.new{Array.new}
   capname = Array.new
   
-  # Open the FasterCap output file to extract the Maxwell Capacitors matrix
-  file_FCoutput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_FasterCapOutput.txt")
+  # Open the fastercap output file to extract the Maxwell Capacitors matrix
+  file_FCoutput = File.join(File.dirname(RBA::CellView::active.filename), source.cell_name+"_fastercapOutput.txt")
   File.open(file_FCoutput, "r") do |file|
     file.each_line do |line|
       line = line.encode("UTF-8", :invalid =&gt; :replace, :undef =&gt; :replace)
@@ -594,7 +598,7 @@ if FASTERCAP
     print(negcap.to_s + " negative capacitors\n")
   end # if negcap
 
-end # if FASTERCAP
+end # if fastercap
 
 
 time = Time.now
